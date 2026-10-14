@@ -207,6 +207,83 @@ class UiSmokeTest(unittest.TestCase):
         self.assertIsNotNone(node_id)
         self.assertIn(self.service.require_node(node_id).type, (NodeType.PROCESS, NodeType.THREAD))
 
+    def test_node_combo_can_list_areas_as_choices(self) -> None:
+        """回归测试：要选"领域"时（新建进程 / 移动进程），领域必须是可选条目。"""
+        from app.widgets.common import NodeComboBox
+
+        combo = NodeComboBox()
+        combo.populate(self.service, (NodeType.AREA,))
+        self.assertEqual(combo.count(), 3, "选领域的下拉框是空的")
+        self.assertEqual(
+            [combo.itemText(index) for index in range(combo.count())], ["领域 1", "领域 2", "领域 3"]
+        )
+        current = combo.current_node_id()
+        self.assertIsNotNone(current, "没有默认选中任何领域")
+        self.assertIs(self.service.require_node(current).type, NodeType.AREA)
+
+    def test_creating_a_process_lets_you_choose_the_area(self) -> None:
+        """回归测试：新建进程时能选领域，并且真的建在所选领域下。"""
+        from PySide6.QtWidgets import QDialog, QInputDialog
+
+        from app.pages import processes as processes_module
+
+        page = self.window.pages["processes"]
+        self.window.set_page("processes")
+        self.app.processEvents()
+        target_area = self.service.node_by_name("领域 2", NodeType.AREA)
+
+        original_exec = processes_module.ChooseNodeDialog.exec
+
+        def fake_exec(dialog) -> int:
+            self.assertIsNotNone(dialog.selected_node_id(), "对话框里没有可选的领域")
+            dialog.combo.set_current_node(target_area.id)
+            return QDialog.DialogCode.Accepted
+
+        processes_module.ChooseNodeDialog.exec = fake_exec
+        original_text = QInputDialog.getText
+        QInputDialog.getText = staticmethod(lambda *args, **kwargs: ("测试进程", True))
+        try:
+            page._create_node(NodeType.PROCESS)
+        finally:
+            processes_module.ChooseNodeDialog.exec = original_exec
+            QInputDialog.getText = original_text
+
+        created = self.service.node_by_name("测试进程", NodeType.PROCESS)
+        self.assertIsNotNone(created, "进程没有建出来")
+        self.assertEqual(created.parent_id, target_area.id)
+
+    def test_moving_a_process_to_another_area(self) -> None:
+        """同一个下拉框也用于"移动进程到别的领域"，一起修好了。"""
+        from PySide6.QtWidgets import QDialog
+
+        from app.widgets import common as common_module
+
+        page = self.window.pages["processes"]
+        self.window.set_page("processes")
+        self.app.processEvents()
+        process = self.service.node_by_name("进程 3-2", NodeType.PROCESS)
+        target_area = self.service.node_by_name("领域 1", NodeType.AREA)
+        self.assertNotEqual(process.parent_id, target_area.id)
+
+        original_exec = common_module.ChooseNodeDialog.exec
+
+        def fake_exec(dialog) -> int:
+            self.assertIsNotNone(dialog.selected_node_id(), "对话框里没有可选的领域")
+            dialog.combo.set_current_node(target_area.id)
+            return QDialog.DialogCode.Accepted
+
+        common_module.ChooseNodeDialog.exec = fake_exec
+        original_confirm = common_module.confirm
+        common_module.confirm = lambda *args, **kwargs: True
+        try:
+            page.select_node(process.id)
+            page._move_selected()
+        finally:
+            common_module.ChooseNodeDialog.exec = original_exec
+            common_module.confirm = original_confirm
+
+        self.assertEqual(self.service.require_node(process.id).parent_id, target_area.id)
+
     def test_tree_is_not_rebuilt_when_nothing_changed(self) -> None:
         """回归测试：没有数据变化时切换页面不应重建整棵树（闪烁的根源）。"""
         page = self.window.pages["processes"]

@@ -244,6 +244,8 @@ class NodeComboBox(QComboBox):
     ) -> None:
         self.clear()
         for area in service.areas():
+            if area.is_archived and not include_archived:
+                continue
             area_rows: list[tuple[str, Node]] = []
             for process in service.processes(area.id):
                 process_rows: list[tuple[str, Node]] = []
@@ -256,14 +258,18 @@ class NodeComboBox(QComboBox):
                         process_rows.append((f"    {thread.name}", thread))
                 if process_rows:
                     area_rows.extend(process_rows)
-            if area_rows:
+            # 要选"领域"本身时（新建进程 / 移动进程），领域必须是可选条目；
+            # 否则领域只作为不可选的分组标题，用来给下面的进程与线程分组。
+            if NodeType.AREA in kinds:
+                self.addItem(area.name, area.id)
+            elif area_rows:
                 self.addItem(area.name)
                 index = self.count() - 1
                 model_item = self.model().item(index)
                 if model_item is not None:
                     model_item.setEnabled(False)
-                for text, node in area_rows:
-                    self.addItem(f"  {text}", node.id)
+            for text, node in area_rows:
+                self.addItem(f"  {text}", node.id)
         if selected_id:
             self.set_current_node(selected_id)
         elif self.count():
