@@ -254,7 +254,7 @@ class Event:
 
 
 def describe_path(steps: list[PathStep] | None) -> str:
-    """把归属路径快照渲染成「领域 3 → 进程 3-3 → 线程 3-3-2」这类文本。"""
+    """把归属路径快照渲染成「领域 1 → 进程 1-1 → 线程 1-1-1」这类文本。"""
     if not steps:
         return "（无归属）"
     return " → ".join(step.name for step in steps)
