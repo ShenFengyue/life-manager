@@ -102,6 +102,13 @@ def main() -> int:
     try:
         db.initialize()
         service = LifeManagerService(db)
+        # 每天第一次启动自动备份一份（含日记）；失败不影响启动
+        try:
+            created = service.auto_backup_if_needed()
+            if created is not None:
+                logger.info("今日自动备份：%s", created)
+        except Exception:  # noqa: BLE001 - 备份失败不能挡住启动
+            logger.exception("自动备份失败（不影响使用）")
     except DataCorruptionError as exc:
         logger.error("数据库损坏：%s", exc)
         service = _corruption_dialog(db, str(exc))

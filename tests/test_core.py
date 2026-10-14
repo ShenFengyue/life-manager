@@ -683,6 +683,68 @@ class TestProcessDescription(ServiceTestCase):
         self.assertEqual((node.description, node.next_action), ("说明文字", "下一步文字"))
 
 
+class TestAutoBackup(ServiceTestCase):
+    """每天第一次启动自动备份一次（含日记），且绝不自动删除旧备份。"""
+
+    def test_creates_one_backup_per_day(self) -> None:
+        from app.models import today_str
+
+        today = today_str()
+        first = self.service.auto_backup_if_needed()
+        self.assertIsNotNone(first)
+        self.assertTrue(first.exists())
+        self.assertTrue(first.name.startswith(f"auto-{today}-"), first.name)
+
+        # 同一天再启动一次：不再新增
+        self.assertIsNone(self.service.auto_backup_if_needed())
+        todays = list((self.tmp / "backups").glob(f"auto-{today}-*.sqlite3"))
+        self.assertEqual(len(todays), 1)
+
+    def test_old_backup_does_not_block_today(self) -> None:
+        """只有旧日期的自动备份时，今天仍然要新建一份，且旧文件保持不动。"""
+        (self.tmp / "backups").mkdir(parents=True, exist_ok=True)
+        old = self.tmp / "backups" / "auto-2020-01-01-000000.sqlite3"
+        old.write_bytes(b"old")
+
+        created = self.service.auto_backup_if_needed()
+
+        self.assertIsNotNone(created)
+        self.assertNotEqual(created, old)
+        self.assertEqual(len(list((self.tmp / "backups").glob("auto-*.sqlite3"))), 2)
+        self.assertEqual(old.read_bytes(), b"old")
+
+    def test_auto_backup_includes_the_diary(self) -> None:
+        from app import diary as diary_store
+
+        diary_store.write_day("2026-10-15", "自动备份要带上这一天的日记")
+        created = self.service.auto_backup_if_needed()
+        self.assertIsNotNone(created)
+        sibling = created.with_name(created.stem + ".diary.md")
+        self.assertTrue(sibling.exists(), "自动备份没有带上日记")
+        self.assertIn("自动备份要带上这一天的日记", sibling.read_text(encoding="utf-8"))
+
+        # 日记被清空后，可以从这份自动备份里找回
+        diary_store.write_day("2026-10-15", "")
+        self.assertEqual(diary_store.read_day("2026-10-15"), "")
+        self.assertIn("自动备份要带上这一天的日记", sibling.read_text(encoding="utf-8"))
+
+    def test_auto_backup_never_deletes_older_backups(self) -> None:
+        """应用不做自动清理：手工备份与旧备份都必须留着。"""
+        manual = self.service.backup("manual")
+        (self.tmp / "backups" / "auto-2020-01-01-000000.sqlite3").write_bytes(b"old")
+        self.service.auto_backup_if_needed()
+        backups = list((self.tmp / "backups").glob("*.sqlite3"))
+        self.assertEqual(len(backups), 3)
+        self.assertIn(manual, backups)
+
+    def test_latest_auto_backup_pointer(self) -> None:
+        self.assertIsNone(self.service.latest_auto_backup())
+        (self.tmp / "backups").mkdir(parents=True, exist_ok=True)
+        (self.tmp / "backups" / "auto-2020-01-01-000000.sqlite3").write_bytes(b"old")
+        newest = self.service.auto_backup_if_needed()
+        self.assertEqual(self.service.latest_auto_backup(), newest)
+
+
 class TestDataCorruptionHandling(ServiceTestCase):
     def test_corrupt_database_raises_instead_of_wiping(self) -> None:
         broken_path = self.tmp / "corrupt.sqlite3"

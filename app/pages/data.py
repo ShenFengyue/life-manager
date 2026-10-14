@@ -181,6 +181,12 @@ class DataPage(QWidget):
                 "备份里如果带日记文件（同名 .diary.md），日记会一起回退到那个时间点。"
             )
         )
+        card.body.addWidget(
+            Subtle(
+                "每天第一次启动会自动创建一份备份（文件名以 auto- 开头，日记一起存）。"
+                "应用**不会自动删除任何备份**，需要清理时请你手动删。"
+            )
+        )
         return card
 
     def _reload_backups(self) -> None:

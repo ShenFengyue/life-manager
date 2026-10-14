@@ -900,6 +900,27 @@ class LifeManagerService:
             return []
         return sorted(paths.BACKUP_DIR.glob("*.sqlite3"), key=lambda p: p.stat().st_mtime, reverse=True)
 
+    def auto_backup_if_needed(self, day: str | None = None) -> Path | None:
+        """每天第一次启动时自动备份一次（数据库 + 日记）。
+
+        - 同一天只做一份：文件名形如 auto-2026-10-15-052030.sqlite3，含日记的同名 .diary.md；
+        - **不会自动删除任何旧备份**（不做自动清理），需要清理时由用户手动处理；
+        - 不会因为失败而影响启动：调用方负责捕获异常。
+        """
+        today = day or today_str()
+        existing = sorted(paths.BACKUP_DIR.glob(f"auto-{today}-*.sqlite3"))
+        if existing:
+            logger.info("今天已经有自动备份，跳过：%s", existing[-1].name)
+            return None
+        # 文件名形如 auto-2026-10-15-052030.sqlite3（日期已含在时间戳里）
+        target = self.backup(label="auto")
+        logger.info("已创建今天的自动备份：%s", target.name)
+        return target
+
+    def latest_auto_backup(self) -> Path | None:
+        entries = sorted(paths.BACKUP_DIR.glob("auto-*.sqlite3"), key=lambda p: p.stat().st_mtime)
+        return entries[-1] if entries else None
+
     def verify_backup(self, backup_path: str | Path) -> tuple[bool, str]:
         """校验备份文件是否可用于恢复。"""
         path = Path(backup_path)
