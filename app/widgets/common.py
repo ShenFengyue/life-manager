@@ -340,35 +340,34 @@ class ActivityTable(QTableWidget):
         header.setStretchLastSection(True)
 
 
-class ActivityListDialog(QDialog):
-    """活动记录清单：可查看、可修改、可彻底删除。"""
+class ActivityListView(QWidget):
+    """活动记录清单本体：可查看、可修改、可彻底删除。
+
+    单独抽成一个普通控件，是为了既能包成弹窗（ActivityListDialog），
+    也能直接嵌进别的窗口里（例如热力图大图下面的那块）。
+    """
 
     changed = Signal()
 
     def __init__(
         self,
         service: LifeManagerService,
-        parent: QWidget,
+        parent: QWidget | None = None,
         *,
-        title: str,
-        subtitle: str,
         activities: list | None = None,
         loader=None,
         empty_text: str = "当日没有活动记录。",
+        hint: str = "删除是彻底删除、不留存；对应热力图当天会少一次。",
     ) -> None:
         super().__init__(parent)
         self.service = service
         self._loader = loader or (lambda: list(activities or []))
         self._activities: list = []
-        self.setWindowTitle(title)
-        self.resize(880, 460)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(10)
-        layout.addWidget(SectionHeader(title))
-        if subtitle:
-            layout.addWidget(Muted(subtitle))
         self.empty_text = empty_text
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
         self.table = ActivityTable()
         self.table.itemSelectionChanged.connect(self._sync_buttons)
@@ -380,22 +379,29 @@ class ActivityListDialog(QDialog):
         layout.addWidget(self.empty_label)
 
         row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
         self.edit_button = QPushButton("修改选中")
         self.edit_button.clicked.connect(self._edit_selected)
         self.delete_button = QPushButton("删除选中")
         self.delete_button.clicked.connect(self._delete_selected)
         row.addWidget(self.edit_button)
         row.addWidget(self.delete_button)
-        row.addWidget(Subtle("删除是彻底删除、不留存；对应热力图当天会少一次。"))
+        row.addWidget(Subtle(hint))
         row.addStretch(1)
         layout.addLayout(row)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.button(QDialogButtonBox.StandardButton.Close).setText("关闭")
-        buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.accept)
-        layout.addWidget(buttons)
         self.reload()
+
+    # ---------------------------------------------------------------- 数据
+    @property
+    def activities(self) -> list:
+        return list(self._activities)
+
+    def set_loader(self, loader) -> None:
+        self._loader = loader or (lambda: [])
+
+    def set_empty_text(self, text: str) -> None:
+        self.empty_text = text
+        self.empty_label.setText(text)
 
     # ---------------------------------------------------------------- 数据
     def reload(self) -> None:
@@ -470,6 +476,73 @@ class ActivityListDialog(QDialog):
             return
         self.reload()
         self.changed.emit()
+
+
+class ActivityListDialog(QDialog):
+    """活动记录清单弹窗：把 ActivityListView 包成一个独立窗口。"""
+
+    changed = Signal()
+
+    def __init__(
+        self,
+        service: LifeManagerService,
+        parent: QWidget,
+        *,
+        title: str,
+        subtitle: str,
+        activities: list | None = None,
+        loader=None,
+        empty_text: str = "当日没有活动记录。",
+    ) -> None:
+        super().__init__(parent)
+        self.service = service
+        self.setWindowTitle(title)
+        self.resize(880, 460)
+        self.empty_text = empty_text
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+        layout.addWidget(SectionHeader(title))
+        if subtitle:
+            layout.addWidget(Muted(subtitle))
+
+        self.view = ActivityListView(
+            service,
+            self,
+            activities=activities,
+            loader=loader,
+            empty_text=empty_text,
+        )
+        self.view.changed.connect(self.changed.emit)
+        layout.addWidget(self.view, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.button(QDialogButtonBox.StandardButton.Close).setText("关闭")
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        layout.addWidget(buttons)
+
+    # ------------------------------------------ 兼容旧调用（都转发给内部控件）
+    @property
+    def table(self) -> ActivityTable:
+        return self.view.table
+
+    @property
+    def empty_label(self):
+        return self.view.empty_label
+
+    def reload(self) -> None:
+        self.view.reload()
+
+    def _activity_at(self, pos):
+        return self.view._activity_at(pos)
+
+    def _edit_selected(self) -> None:
+        self.view._edit_selected()
+
+    def _delete_selected(self) -> None:
+        self.view._delete_selected()
 
 
 class QuickRecordDialog(QDialog):

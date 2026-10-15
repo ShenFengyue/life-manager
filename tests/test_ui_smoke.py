@@ -1727,7 +1727,7 @@ class UiSmokeTest(unittest.TestCase):
         self.assertEqual(opened, [("process", explore.id)])
 
     def test_detail_dialog_is_bigger_and_can_open_a_day(self) -> None:
-        """大图明显比迷你图大；点某一天会列出那天的活动记录。"""
+        """大图明显比迷你图大；点某一天，记录显示在大图下面的面板里（不再弹新窗口）。"""
         from app import clock
         from app.pages import heatmaps as heatmaps_module
         from app.pages.heatmaps import HeatmapDetailDialog
@@ -1738,22 +1738,76 @@ class UiSmokeTest(unittest.TestCase):
 
         page = self._heatmap_page()
         row = page._process_rows[explore.id]
-        dialog = HeatmapDetailDialog(
-            self.service, explore, "process", clock.today(), self
-        )
+        # 注意：这里不能把 self（TestCase）当回调传进去 —— 调用 TestCase 实例会再跑一遍测试。
+        dialog = HeatmapDetailDialog(self.service, explore, "process", clock.today())
         self.assertGreater(dialog.calendar.width(), row.calendar.width())
         self.assertGreater(dialog.calendar.height(), row.calendar.height())
         self.assertIn("次活动", dialog.stats_label.text())
 
-        captured = self._open_dialog_without_blocking(
-            heatmaps_module, lambda: dialog._on_day_clicked("2026-10-15")
-        )
-        self.assertEqual(captured.table.rowCount(), 1)
+        # 还没点日子：面板处于提示状态
+        self.assertIsNone(dialog.day_panel.day)
+        self.assertEqual(dialog.day_panel.view.table.rowCount(), 0)
+
+        # 点某一天：就地显示，绝不该再弹新窗口
+        original = heatmaps_module.open_day_dialog
+        heatmaps_module.open_day_dialog = lambda *a, **k: self.fail("不该再弹新窗口")
+        try:
+            dialog._on_day_clicked("2026-10-15")
+        finally:
+            heatmaps_module.open_day_dialog = original
+
+        self.assertEqual(dialog.day_panel.day, "2026-10-15")
+        table = dialog.day_panel.view.table
+        self.assertEqual(table.rowCount(), 1)
+        self.assertIn("2026-10-15", dialog.day_panel._title.text())
         cells = " ".join(
-            captured.table.item(0, column).text()
-            for column in range(captured.table.columnCount())
+            table.item(0, column).text() for column in range(table.columnCount())
         )
         self.assertIn("大图里的记录", cells)
+
+        # 换到没有记录的一天：面板跟着换
+        dialog._on_day_clicked("2026-10-14")
+        self.assertEqual(dialog.day_panel.view.table.rowCount(), 0)
+        self.assertIn("没有记录", dialog.day_panel._title.text())
+
+    def test_deleting_in_day_panel_refreshes_calendar(self) -> None:
+        """在大图下面的面板里删掉记录：大图和热力图页当天都立刻变浅。"""
+        from app import clock
+        from app.pages.heatmaps import HeatmapDetailDialog
+        from app.widgets import common as common_module
+
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        self.service.record_activity(english.id, "面板里删掉的", "2026-10-15")
+
+        page = self._heatmap_page()
+        # 传的正是 _open_detail 里会传的那个回调，所以这条链路和真实使用一致
+        dialog = HeatmapDetailDialog(
+            self.service,
+            explore,
+            "process",
+            clock.today(),
+            page._on_activities_changed,
+        )
+        dialog._on_day_clicked("2026-10-15")
+        table = dialog.day_panel.view.table
+        self.assertEqual(table.rowCount(), 1)
+
+        dialog.day_panel.view._activity_at(
+            table.visualItemRect(table.item(0, 0)).center()
+        )
+        original_confirm = common_module.confirm
+        common_module.confirm = lambda *args, **kwargs: True
+        try:
+            dialog.day_panel.view._delete_selected()
+        finally:
+            common_module.confirm = original_confirm
+
+        # 1) 面板自己变空；2) 大图当天变浅；3) 背后的热力图页同步
+        self.assertEqual(dialog.day_panel.view.table.rowCount(), 0)
+        self.assertIn("没有记录", dialog.day_panel._title.text())
+        self.assertEqual(dialog.calendar.totals()[0], 0)
+        self.assertEqual(page._process_rows[explore.id].calendar.totals()[0], 0)
 
     def test_area_row_collapses_and_expands_its_processes(self) -> None:
         """领域行的三角：折叠后它下面的进程行全部隐藏，再点一次回来。"""

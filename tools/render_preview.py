@@ -185,13 +185,18 @@ def main() -> int:
     print(f"已渲染 quick-capture-note → {OUTPUT_DIR / 'quick-capture-note.png'}")
 
     # 热力图页点开的全屏大图
-    from app.pages.heatmaps import HeatmapDetailDialog
+    from app.pages.heatmaps import HeatmapDetailDialog, scope_data
 
     process = service.node_by_name("进程 3-3", NodeType.PROCESS)
     detail = HeatmapDetailDialog(service, process, "process", clock.today())
     detail.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
-    detail.resize(1780, 520)
+    detail.resize(1780, 840)
     detail.show()
+    _settle(app)
+    # 点一个记录最多的日子：展示"大图 + 下方当天记录"的样子
+    counts, _summaries = scope_data(service, "process", process.id, detail.calendar.grid)
+    if counts:
+        detail._on_day_clicked(max(counts, key=lambda day: counts[day]))
     _settle(app)
     detail.grab().save(str(OUTPUT_DIR / "heatmap-detail.png"))
     print(f"已渲染 heatmap-detail → {OUTPUT_DIR / 'heatmap-detail.png'}")

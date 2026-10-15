@@ -27,6 +27,7 @@ from .. import clock, heatmap as heatmap_stats, theme
 from ..models import Node, NodeType
 from ..services import LifeManagerService, ValidationError
 from ..widgets.common import (
+    ActivityListView,
     Muted,
     SectionHeader,
     Subtle,
@@ -259,7 +260,7 @@ class HeatmapRow(QFrame):
 
 
 class HeatmapDetailDialog(QDialog):
-    """某个节点的全屏大热力图：点任意一天的色块，看当天的全部活动记录。"""
+    """某个节点的全屏大热力图：点任意一天的色块，**在下方就地**显示当天的活动记录。"""
 
     def __init__(
         self,
@@ -276,7 +277,7 @@ class HeatmapDetailDialog(QDialog):
         self.scope_kind = scope_kind
         self._on_changed = on_changed
         self.setWindowTitle(f"{node.name} · 热力图")
-        self.setMinimumSize(880, 460)
+        self.setMinimumSize(900, 620)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -306,10 +307,15 @@ class HeatmapDetailDialog(QDialog):
         calendar_row.addStretch(1)
         layout.addLayout(calendar_row)
 
-        layout.addWidget(
-            Subtle("点任意一天的色块，看那天的全部活动记录（可以改备注、改日期、彻底删除）。")
+        # 大图下面那块空白：就地显示当天的活动记录，不再另开窗口
+        self.day_panel = DayActivityPanel(
+            service,
+            scope_kind,
+            node.id,
+            on_changed=self._on_activities_changed,
+            parent=self,
         )
-        layout.addStretch(1)
+        layout.addWidget(self.day_panel, 1)
         self.refresh()
 
     @staticmethod
@@ -342,9 +348,94 @@ class HeatmapDetailDialog(QDialog):
         self.stats_label.setText(text)
 
     def _on_day_clicked(self, day: str) -> None:
-        open_day_dialog(
-            self.service, self, self.scope_kind, self.node.id, day, self._on_changed
+        """点某一天：在下面的面板里就地显示那天的记录（不弹新窗口）。"""
+        self.day_panel.show_day(day)
+
+    def _on_activities_changed(self) -> None:
+        """面板里改了/删了记录：大图立刻重画，外面的页面也跟着刷新。"""
+        self.refresh()
+        if self._on_changed is not None:
+            self._on_changed()
+
+
+class DayActivityPanel(QWidget):
+    """大图下面那块：某一天的活动记录，就地显示、就地修改（不再另开窗口）。"""
+
+    def __init__(
+        self,
+        service: LifeManagerService,
+        scope_kind: str,
+        scope_id: str,
+        on_changed=None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.service = service
+        self.scope_kind = scope_kind
+        self.scope_id = scope_id
+        self._on_changed = on_changed
+        self._day: str | None = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self._title = SectionHeader("当天活动记录")
+        layout.addWidget(self._title)
+
+        self.view = ActivityListView(
+            service,
+            self,
+            empty_text="点上面任意一天的色块，这里会列出那天的活动记录。",
         )
+        self.view.changed.connect(self._on_view_changed)
+        layout.addWidget(self.view, 1)
+
+        self.show_day(None)
+
+    @property
+    def day(self) -> str | None:
+        return self._day
+
+    def show_day(self, day: str | None) -> None:
+        """显示某一天；传 None 表示还没选日子（回到提示状态）。"""
+        self._day = day
+        if not day:
+            self.view.set_loader(lambda: [])
+            self.view.set_empty_text("点上面任意一天的色块，这里会列出那天的活动记录。")
+            self.view.reload()
+            self._sync_title()
+            return
+        if self.scope_kind == "area":
+            self.view.set_loader(
+                lambda: self.service.list_activities(
+                    area_id=self.scope_id, date_from=day, date_to=day
+                )
+            )
+        else:
+            self.view.set_loader(
+                lambda: self.service.list_activities(
+                    process_id=self.scope_id, date_from=day, date_to=day
+                )
+            )
+        self.view.set_empty_text(f"{day} 没有活动记录。")
+        self.view.reload()
+        self._sync_title()
+
+    def _sync_title(self) -> None:
+        if not self._day:
+            self._title.setText("当天活动记录")
+            return
+        count = len(self.view.activities)
+        self._title.setText(
+            f"{self._day} · {count} 条记录" if count else f"{self._day} · 没有记录"
+        )
+
+    def _on_view_changed(self) -> None:
+        """面板里改了/删了记录：刷新标题，并让大图和外面的页面一起跟上。"""
+        self._sync_title()
+        if self._on_changed is not None:
+            self._on_changed()
 
 
 class HeatmapsPage(QWidget):
