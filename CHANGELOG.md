@@ -8,6 +8,26 @@
 
 ---
 
+## 1.15.0
+
+数据结构：**v3**（不变）
+
+### 新增
+
+- **应用图标（Windows 任务栏 / 标题栏 / Alt-Tab）**：新增 `assets/logo.png` 与由它生成的
+  多尺寸 `assets/logo.ico`（16 / 24 / 32 / 48 / 64 / 128 / 256 共 7 档，每档单独缩放，
+  比单张图片缩小清晰得多）。程序启动时会把它设成应用与主窗口图标。
+- 同时设置了 **AppUserModelID**（`LifeManager.Desktop.v1`）：否则 Windows 会把窗口归到
+  `pythonw.exe` 名下，任务栏可能显示成空白或 Python 的标志。这个调用只给进程起一个身份名，
+  不写注册表、不写 AppData。
+- 顺带生成一个带图标的快捷方式 `Life Manager.lnk`（指向项目内的 `.venv` 解释器，
+  图标用 `assets/logo.ico`）。想固定到任务栏时用它，钉住的就是这个图标。
+  快捷方式含本机绝对路径，已被 `.gitignore` 排除，不进仓库。
+- 新增开发工具 `tools/make_icon.py`：从 `assets/logo.png` 重新生成 `assets/logo.ico`
+  （不需要额外依赖）。
+
+---
+
 ## 1.14.1
 
 数据结构：**v3**（不变）

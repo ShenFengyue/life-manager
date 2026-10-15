@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import clock, paths
+from . import clock, paths, theme
 from .appconfig import AppConfig
 from .pages.activity import ActivityPage
 from .pages.data import DataPage
@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):
         self._rendered_date = today_str()
         self._geometry_clamped = False
         self.setWindowTitle("Life Manager")
+        self.setWindowIcon(theme.app_icon())
         self.resize(
             int(config.get("window_width")), int(config.get("window_height"))
         )

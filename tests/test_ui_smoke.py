@@ -175,6 +175,34 @@ class UiSmokeTest(unittest.TestCase):
     def test_theme_colors_match_github_scale(self) -> None:
         self.assertEqual(theme.LEVEL_COLORS, heatmap_stats.LEVEL_COLORS)
 
+    def test_app_icon_is_available_at_taskbar_sizes(self) -> None:
+        """任务栏/标题栏图标：资源在位、能被 Qt 读出、各档尺寸都不是空白。"""
+        from app import paths
+
+        self.assertTrue(paths.LOGO_PNG.exists(), "缺少 assets/logo.png")
+        self.assertTrue(paths.LOGO_ICO.exists(), "缺少 assets/logo.ico（多尺寸图标）")
+
+        icon = theme.app_icon()
+        self.assertFalse(icon.isNull(), "应用图标读不出来")
+        sizes = {(item.width(), item.height()) for item in icon.availableSizes()}
+        for expected in ((16, 16), (32, 32), (48, 48)):
+            self.assertIn(expected, sizes, f"图标缺少 {expected[0]}px 这一档")
+
+        for size in (16, 32, 48):
+            pixmap = icon.pixmap(size, size)
+            self.assertFalse(pixmap.isNull(), f"{size}px 图标是空的")
+            image = pixmap.toImage()
+            dark = sum(
+                1
+                for x in range(image.width())
+                for y in range(image.height())
+                if image.pixelColor(x, y).lightness() < 100
+            )
+            self.assertGreater(dark, 0, f"{size}px 图标里没有深色图形（像是空白图）")
+
+    def test_main_window_has_the_icon(self) -> None:
+        self.assertFalse(self.window.windowIcon().isNull(), "主窗口没有设置图标")
+
     def test_refresh_removes_stale_widgets(self) -> None:
         """回归测试：刷新后不能残留带默认几何的旧控件（会盖住其它控件）。"""
         from PySide6.QtWidgets import QWidget as _QWidget

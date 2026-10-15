@@ -21,6 +21,24 @@ from app.storage import DataCorruptionError, Database
 logger = logging.getLogger(__name__)
 
 
+def _set_windows_app_id() -> None:
+    """让 Windows 把这个进程当成一个独立应用。
+
+    否则任务栏会把窗口归到 pythonw.exe 名下，图标可能显示成空白或 Python 的标志。
+    这个调用只是给进程起一个"身份名"，不写注册表、不写 AppData。
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "LifeManager.Desktop.v1"
+        )
+    except Exception:  # noqa: BLE001 - 设置失败不影响使用
+        logger.warning("设置 Windows 应用标识失败（图标可能回退成默认样式）", exc_info=True)
+
+
 def _install_exception_hook() -> None:
     """未捕获异常写入日志并弹窗提示，避免 .pyw 方式启动时静默失败。"""
 
@@ -84,6 +102,7 @@ def main() -> int:
     setup_logging()
     _install_exception_hook()
     paths.ensure_directories()
+    _set_windows_app_id()
     diary_file = diary.ensure_file()
     logger.info("日记文件：%s", diary_file)
     logger.info("Life Manager 启动，项目根目录：%s", paths.ROOT)
@@ -91,6 +110,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Life Manager")
     app.setApplicationDisplayName("Life Manager")
+    app.setWindowIcon(theme.app_icon())
     app.setStyle("Fusion")
     app.setPalette(theme.light_palette())
     app.setFont(theme.app_font())

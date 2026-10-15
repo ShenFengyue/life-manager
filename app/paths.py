@@ -20,6 +20,9 @@ def project_root() -> Path:
 
 ROOT = project_root()
 DATA_DIR = ROOT / DATA_DIR_NAME
+ASSETS_DIR = ROOT / "assets"
+LOGO_PNG = ASSETS_DIR / "logo.png"
+LOGO_ICO = ASSETS_DIR / "logo.ico"
 DATABASE_PATH = DATA_DIR / "process_manager.sqlite3"
 DIARY_PATH = DATA_DIR / "diary.md"
 BACKUP_DIR = DATA_DIR / "backups"

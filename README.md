@@ -1,7 +1,7 @@
-# Life Manager v1.14.1
+# Life Manager v1.15.0
 
 > 版本与变更记录见 [CHANGELOG.md](CHANGELOG.md)。应用版本与数据结构版本是两件事：
-> 当前应用版本 **1.14.1**，数据结构版本 **v3**（旧库启动时自动升级，升级前自动备份）。
+> 当前应用版本 **1.15.0**，数据结构版本 **v3**（旧库启动时自动升级，升级前自动备份）。
 
 > 这个项目是怎么在一个晚上被"聊"出来的（含时间线、真实日志与成本账）：
 > [vibe coding全过程记录.md](vibe%20coding全过程记录.md)。
@@ -175,6 +175,9 @@ Life-Manager/
 ├── 启动.pyw                  ← 日常双击入口（环境检测 + 无控制台启动）
 ├── requirements.txt
 ├── README.md
+├── assets/
+│   ├── logo.png              ← 应用图标源图
+│   └── logo.ico              ← 多尺寸图标（任务栏/标题栏用，由 tools/make_icon.py 生成）
 ├── app/
 │   ├── main.py               ← 应用入口（日志 / 数据库 / 主窗口）
 │   ├── main_window.py        ← 主窗口与可收起的左侧导航
@@ -321,6 +324,9 @@ Life-Manager/
 
 # 启动真实窗口并抓图（含逐页截图）
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\capture_window.ps1 -SwitchPages
+
+# 换了 assets/logo.png 之后，重新生成多尺寸图标 assets/logo.ico
+.venv\Scripts\python.exe tools\make_icon.py
 ```
 
 ---

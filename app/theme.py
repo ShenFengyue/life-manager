@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtGui import QColor, QFont, QIcon, QPalette
+
+from . import paths
 
 # ------------------------------------------------------------------ 配色
 BG = "#ffffff"
@@ -55,6 +57,20 @@ def app_font() -> QFont:
     font.setPointSize(10)
     font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     return font
+
+
+def app_icon() -> QIcon:
+    """应用图标（任务栏、标题栏、Alt-Tab 都用它）。
+
+    优先用多尺寸的 `.ico`：Windows 在 16/24/32/48… 各档缩放下都能挑到对应尺寸，
+    比单张 PNG 缩小更清晰；`.ico` 不在时退回 PNG；都读不到就返回空图标（不影响运行）。
+    """
+    for candidate in (paths.LOGO_ICO, paths.LOGO_PNG):
+        if candidate.exists():
+            icon = QIcon(str(candidate))
+            if not icon.isNull():
+                return icon
+    return QIcon()
 
 
 def light_palette() -> QPalette:
