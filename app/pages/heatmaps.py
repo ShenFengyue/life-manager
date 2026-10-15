@@ -46,6 +46,7 @@ class HeatmapBlock(QWidget):
         title: str | None = None,
         note: str = "",
         on_changed=None,
+        show_legend: bool = False,
     ) -> None:
         super().__init__(parent)
         self.service = service
@@ -80,7 +81,8 @@ class HeatmapBlock(QWidget):
         self.stats_label = Subtle("")
         bottom.addWidget(self.stats_label)
         bottom.addStretch(1)
-        bottom.addWidget(HeatmapLegend())
+        if show_legend:
+            bottom.addWidget(HeatmapLegend())
         layout.addLayout(bottom)
 
     def apply_window(self, grid: heatmap_stats.CalendarGrid) -> None:
@@ -207,6 +209,9 @@ class HeatmapsPage(QWidget):
         self.window_label = Subtle("")
         row.addWidget(self.window_label)
         row.addStretch(1)
+        # 整页只留一个图例，放在工具栏右侧，不再每张图重复一遍
+        row.addWidget(HeatmapLegend())
+        row.addSpacing(10)
 
         expand = QPushButton("全部展开")
         expand.clicked.connect(lambda: self._set_all_expanded(True))

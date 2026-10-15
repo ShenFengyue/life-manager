@@ -148,10 +148,12 @@ class OverviewHeatmapCard(Card):
             row.addStretch(1)
         self.body.addLayout(row)
 
-        legend_row = QHBoxLayout()
-        legend_row.addStretch(1)
-        legend_row.addWidget(HeatmapLegend(scale=scale))
-        self.body.addLayout(legend_row)
+        # 图例只在总热力图上留一个：下面每张领域热力图是同一套配色，不必重复
+        if self.total:
+            legend_row = QHBoxLayout()
+            legend_row.addStretch(1)
+            legend_row.addWidget(HeatmapLegend(scale=scale))
+            self.body.addLayout(legend_row)
 
     def refresh(self) -> None:
         # 一直开着跨过午夜时，把窗口挪到今天

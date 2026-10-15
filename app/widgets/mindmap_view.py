@@ -46,6 +46,7 @@ class CardData:
     pinned: bool = False
     archived: bool = False
     tooltip: str = ""
+    today_count: int = 0
 
 
 class MindMapCard(QGraphicsObject):
@@ -87,7 +88,7 @@ class MindMapCard(QGraphicsObject):
             border = accent if self._hovered else QColor(accent)
             border.setAlpha(150 if not self._hovered else 255)
         else:
-            background = QColor("#ffffff" if not self.data.archived else "#f6f8fa")
+            background = QColor(theme.BG if not self.data.archived else theme.SURFACE)
             border = accent if self._hovered else QColor(theme.BORDER)
 
         painter.setBrush(QBrush(background))
@@ -117,13 +118,28 @@ class MindMapCard(QGraphicsObject):
         )
 
         painter.setFont(self._subtitle_font)
-        painter.setPen(QPen(QColor(theme.TEXT_SUBTLE)))
         sub_metrics = QFontMetrics(self._subtitle_font)
-        subtitle = sub_metrics.elidedText(
-            self.data.subtitle, Qt.TextElideMode.ElideRight, int(rect.width() - padding_left - 8)
+        subtitle_rect = QRectF(
+            rect.left() + padding_left, rect.top() + 24, rect.width() - padding_left - 8, 14
         )
+        subtitle = sub_metrics.elidedText(
+            self.data.subtitle, Qt.TextElideMode.ElideRight, int(subtitle_rect.width())
+        )
+        if self.data.today_count > 0:
+            # 今天记过：在副标题左边点一个小绿点，扫一眼就知道哪些今天动过
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor(theme.TODAY_DOT)))
+            painter.drawEllipse(
+                QRectF(
+                    rect.left() + padding_left - 6,
+                    subtitle_rect.top() + 4.5,
+                    5.0,
+                    5.0,
+                )
+            )
+        painter.setPen(QPen(QColor(theme.TEXT_SUBTLE)))
         painter.drawText(
-            QRectF(rect.left() + padding_left, rect.top() + 24, rect.width() - padding_left - 8, 14),
+            subtitle_rect,
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             subtitle,
         )
@@ -188,7 +204,7 @@ class MindMapView(QGraphicsView):
         )
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setBackgroundBrush(QBrush(QColor(theme.BG)))
+        self.setBackgroundBrush(QBrush(QColor(theme.PAGE_BG)))
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self._cards: dict[str, MindMapCard] = {}
@@ -249,7 +265,8 @@ class MindMapView(QGraphicsView):
         start = QPointF(parent.right, parent.center_y)
         end = QPointF(child.x, child.center_y)
         mid_x = start.x() + (end.x() - start.x()) * 0.5
-        radius = min(12.0, abs(end.y() - start.y()) / 2 if end.y() != start.y() else 12.0)
+        # 圆角折线（XMind 逻辑图那种），半径给足才看得出是圆角
+        radius = min(18.0, abs(end.y() - start.y()) / 2 if end.y() != start.y() else 18.0)
 
         path = QPainterPath(start)
         if abs(end.y() - start.y()) < 1.0:

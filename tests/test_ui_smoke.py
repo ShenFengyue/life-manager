@@ -79,6 +79,41 @@ class UiSmokeTest(unittest.TestCase):
         self.window.toggle_sidebar()
         self.assertTrue(self.window.sidebar.isVisibleTo(self.window))
 
+    def test_legend_appears_exactly_once_per_page(self) -> None:
+        """「少 → 多」图例不重复：热力图页与总览页各只留一个。"""
+        from app.widgets.heatmap_calendar import HeatmapLegend
+
+        for key in ("heatmaps", "overview"):
+            self.window.set_page(key)
+            self.app.processEvents()
+            legends = self.window.pages[key].findChildren(HeatmapLegend)
+            self.assertEqual(
+                len(legends), 1, f"{key} 页面的图例应有 1 个，实际 {len(legends)} 个"
+            )
+
+    def test_empty_heatmap_is_dimmed(self) -> None:
+        """整张窗口没有记录的热力图进入淡化状态，有记录就恢复。"""
+        from app.widgets.heatmap_calendar import HeatmapCalendar
+
+        calendar = HeatmapCalendar()
+        calendar.set_data({})
+        self.assertTrue(calendar.is_empty)
+        calendar.set_data({"2026-10-15": 1})
+        self.assertFalse(calendar.is_empty)
+
+    def test_mindmap_card_marks_today_records(self) -> None:
+        """记录地图卡片会带上"今天记过几次"，供绿色小圆点使用。"""
+        area = self.service.areas()[0]
+        process = self.service.processes(area.id)[0]
+        page = self.window.pages["mindmap"]
+        self.window.set_page("mindmap")
+        self.app.processEvents()
+        self.assertEqual(page.view._cards[process.id].data.today_count, 0)
+
+        self.service.record_activity(process.id, "今天做过")
+        page.refresh()
+        self.assertEqual(page.view._cards[process.id].data.today_count, 1)
+
     def test_quick_capture_shortcut_registered(self) -> None:
         """Ctrl+N 是极简快速记录（左栏不显示这个键，但功能在）。"""
         from PySide6.QtGui import QKeySequence

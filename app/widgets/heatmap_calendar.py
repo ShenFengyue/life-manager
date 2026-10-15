@@ -52,6 +52,8 @@ class HeatmapCalendar(QWidget):
         self._grid = heatmap_stats.build_calendar(weeks=weeks)
         self._counts: dict[str, int] = {}
         self._summaries: dict[str, list[str]] = {}
+        # 整个窗口内一条记录都没有时为 True（整张图淡化显示）
+        self._dim = True
         self._hover: tuple[int, int] | None = None
         self._labels_font = QFont()
         self._labels_font.setPointSize(max(8, round(8 * self._scale)))
@@ -83,7 +85,13 @@ class HeatmapCalendar(QWidget):
     def set_data(self, counts: dict[str, int], summaries: dict[str, list[str]] | None = None) -> None:
         self._counts = dict(counts)
         self._summaries = dict(summaries or {})
+        self._dim = not any(self._counts.values())
         self.update()
+
+    @property
+    def is_empty(self) -> bool:
+        """当前窗口内没有任何活动记录。"""
+        return self._dim
 
     @property
     def window_text(self) -> str:
@@ -161,12 +169,17 @@ class HeatmapCalendar(QWidget):
                 if day is None:
                     continue
                 count = self._counts.get(day, 0)
-                color = QColor(theme.LEVEL_COLORS[heatmap_stats.level_for(count)])
+                level = heatmap_stats.level_for(count)
                 rect = self._cell_rect(column, row)
                 painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(color)
+                if self._dim:
+                    # 一条记录都没有：只留极淡的格纹，不描边，不去抢视线
+                    painter.setBrush(QColor(theme.HEATMAP_DIM_EMPTY))
+                    painter.drawRoundedRect(rect, self._radius, self._radius)
+                    continue
+                painter.setBrush(QColor(theme.LEVEL_COLORS[level]))
                 painter.drawRoundedRect(rect, self._radius, self._radius)
-                if heatmap_stats.level_for(count) == 0:
+                if level == 0:
                     painter.setPen(empty_border)
                     painter.setBrush(Qt.BrushStyle.NoBrush)
                     painter.drawRoundedRect(rect, self._radius, self._radius)

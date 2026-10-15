@@ -22,7 +22,14 @@ ACCENT = "#0969da"
 ACCENT_SOFT = "#ddf4ff"
 ACCENT_HOVER = "#0860ca"
 DANGER = "#cf222e"
-PAGE_BG = "#ffffff"
+# 分层：页面底色比卡片深半档，卡片才是白的 —— 这样"页面 / 卡片 / 边界"清楚，
+# 不用阴影也能看出来谁浮在谁上面。
+PAGE_BG = "#f6f8fa"
+SIDEBAR_BG = "#eef1f4"
+# 整张窗口内一条记录都没有的热力图：格子更淡，不去和右侧有数据的图抢视线
+HEATMAP_DIM_EMPTY = "#f0f3f6"
+# 记录地图上"今天记过"的小圆点
+TODAY_DOT = "#30a14e"
 
 # 热力图配色（与 app.heatmap.LEVEL_COLORS 保持一致）
 LEVEL_COLORS: tuple[str, ...] = ("#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39")
@@ -117,7 +124,10 @@ def stylesheet() -> str:
         font-size: 13px;
         color: {TEXT};
     }}
-    QMainWindow, QDialog {{ background: {PAGE_BG}; }}
+    QMainWindow {{ background: {PAGE_BG}; }}
+    QDialog {{ background: {BG}; }}
+    /* 滚动区域的视口跟随页面底色，避免页面灰、滚动区白的两截感 */
+    QScrollArea > QWidget#qt_scrollarea_viewport {{ background: {PAGE_BG}; }}
     QToolTip {{
         background: #24292f;
         color: #ffffff;
@@ -126,7 +136,7 @@ def stylesheet() -> str:
     }}
 
     /* ---------------------------------------------------- 侧边导航 */
-    #Sidebar {{ background: {SURFACE}; border-right: 1px solid {BORDER_MUTED}; }}
+    #Sidebar {{ background: {SIDEBAR_BG}; border-right: 1px solid {BORDER_MUTED}; }}
     #SidebarTitle {{ color: {TEXT}; font-size: 16px; font-weight: 600; }}
     #SidebarSubtitle {{ color: {TEXT_SUBTLE}; font-size: 11px; }}
     #NavGroup {{
@@ -147,7 +157,7 @@ def stylesheet() -> str:
     #NavSeparator {{ background: {BORDER_MUTED}; border: none; }}
 
     /* -------------------------------------------------------- 顶栏 */
-    #TopBar {{ background: {PAGE_BG}; border-bottom: 1px solid {BORDER_MUTED}; }}
+    #TopBar {{ background: {BG}; border-bottom: 1px solid {BORDER_MUTED}; }}
     #PageTitle {{ font-size: 15px; font-weight: 600; }}
 
     /* -------------------------------------------------------- 卡片 */
@@ -168,7 +178,7 @@ def stylesheet() -> str:
 
     /* -------------------------------------------------------- 按钮 */
     QPushButton {{
-        background: {SURFACE};
+        background: {BG};
         border: 1px solid {BORDER};
         border-radius: 6px;
         padding: 5px 12px;
@@ -246,7 +256,7 @@ def stylesheet() -> str:
     QSplitter::handle {{ background: {BORDER_MUTED}; }}
     QSplitter::handle:hover {{ background: {BORDER}; }}
     QScrollArea {{ border: none; background: {PAGE_BG}; }}
-    QStatusBar {{ background: {SURFACE}; color: {TEXT_MUTED}; border-top: 1px solid {BORDER_MUTED}; }}
+    QStatusBar {{ background: {BG}; color: {TEXT_MUTED}; border-top: 1px solid {BORDER_MUTED}; }}
     QTabWidget::pane {{ border: 1px solid {BORDER}; border-radius: 8px; }}
     QTabBar::tab {{ padding: 6px 12px; color: {TEXT_MUTED}; }}
     QTabBar::tab:selected {{ color: {TEXT}; font-weight: 600; }}

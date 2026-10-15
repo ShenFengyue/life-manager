@@ -197,6 +197,7 @@ class MindMapPage(QWidget):
             pinned=node.pinned,
             archived=node.is_archived,
             tooltip="\n".join(lines),
+            today_count=today_count,
         )
 
     def _level_widths(self, cards: list[CardData]) -> list[float]:
