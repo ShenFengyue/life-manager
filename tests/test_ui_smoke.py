@@ -79,6 +79,38 @@ class UiSmokeTest(unittest.TestCase):
         self.window.toggle_sidebar()
         self.assertTrue(self.window.sidebar.isVisibleTo(self.window))
 
+    def test_quick_capture_shortcut_registered(self) -> None:
+        """Ctrl+N 是极简快速记录（左栏不显示这个键，但功能在）。"""
+        from PySide6.QtGui import QKeySequence
+
+        self.assertEqual(
+            self.window.quick_capture_shortcut.key(), QKeySequence("Ctrl+N")
+        )
+
+    def test_ctrl_n_really_opens_the_capture_panel(self) -> None:
+        """端到端：按下 Ctrl+N 会弹出面板（用定时器把它关掉，避免阻塞测试）。"""
+        from PySide6.QtCore import QTimer
+        from PySide6.QtTest import QTest
+
+        from app.widgets.quick_capture import QuickCaptureDialog
+
+        opened: list[object] = []
+
+        def close_active() -> None:
+            active = QApplication.activeModalWidget()
+            opened.append(active)
+            if active is not None:
+                active.reject()
+
+        self.window.show()
+        self.app.processEvents()
+        QTimer.singleShot(150, close_active)
+        QTest.keyClick(
+            self.window, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier
+        )
+        self.assertTrue(opened)
+        self.assertIsInstance(opened[0], QuickCaptureDialog)
+
     def test_sidebar_buttons_are_large_and_hide_shortcuts(self) -> None:
         from PySide6.QtGui import QShortcut
 

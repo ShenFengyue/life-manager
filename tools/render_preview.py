@@ -163,6 +163,23 @@ def main() -> int:
     dialog.grab().save(str(OUTPUT_DIR / "deleted.png"))
     print(f"已渲染 deleted → {OUTPUT_DIR / 'deleted.png'}")
 
+    # 快速记录（Ctrl+N）：两段式，各抓一张
+    from app.widgets.quick_capture import QuickCaptureDialog
+
+    quick = QuickCaptureDialog(service, None)
+    quick.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+    quick.show()
+    quick.input.setText("线程 3-3")
+    _settle(app)
+    quick.grab().save(str(OUTPUT_DIR / "quick-capture-match.png"))
+    print(f"已渲染 quick-capture-match → {OUTPUT_DIR / 'quick-capture-match.png'}")
+
+    quick.input.returnPressed.emit()
+    quick.input.setText("推进了一小步")
+    _settle(app)
+    quick.grab().save(str(OUTPUT_DIR / "quick-capture-note.png"))
+    print(f"已渲染 quick-capture-note → {OUTPUT_DIR / 'quick-capture-note.png'}")
+
     db.close()
     return 0
 

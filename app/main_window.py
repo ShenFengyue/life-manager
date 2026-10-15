@@ -8,6 +8,7 @@ from PySide6.QtCore import QByteArray, QRect, QTimer, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -28,6 +29,7 @@ from .pages.overview import OverviewPage
 from .pages.processes import ProcessesPage
 from .services import LifeManagerService
 from .widgets.common import QuickRecordDialog
+from .widgets.quick_capture import QuickCaptureDialog
 from .widgets.sidebar import ALL_NAV_ITEMS, Sidebar
 from .models import today_str
 
@@ -203,6 +205,7 @@ class MainWindow(QMainWindow):
 
         quick = QPushButton("记录活动")
         quick.setObjectName("Primary")
+        quick.setToolTip("打开完整记录窗口（可以改日期）· Ctrl+N 是极简快速记录")
         quick.clicked.connect(self._quick_record)
         row.addWidget(quick)
         return bar
@@ -211,6 +214,9 @@ class MainWindow(QMainWindow):
         for key, _label, shortcut_text in ALL_NAV_ITEMS:
             shortcut = QShortcut(QKeySequence(shortcut_text), self)
             shortcut.activated.connect(lambda page_key=key: self.set_page(page_key))
+        # Ctrl+N：极简快速记录（任意页面都能用），只做这一件事
+        self.quick_capture_shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
+        self.quick_capture_shortcut.activated.connect(self.quick_capture)
 
     # ------------------------------------------------------------ 页面连接
     def _wire_pages(self) -> None:
@@ -286,6 +292,15 @@ class MainWindow(QMainWindow):
     def _quick_record(self) -> None:
         dialog = QuickRecordDialog(self.service, self)
         if dialog.exec() and dialog.recorded is not None:
+            self.on_data_changed()
+            self.statusBar().showMessage(
+                f"已记录一次活动：{self.service.path_text(dialog.recorded.node_id)}", 5000
+            )
+
+    def quick_capture(self) -> None:
+        """Ctrl+N：一个输入框，先匹配节点，再写备注，两次回车完成。"""
+        dialog = QuickCaptureDialog(self.service, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.recorded is not None:
             self.on_data_changed()
             self.statusBar().showMessage(
                 f"已记录一次活动：{self.service.path_text(dialog.recorded.node_id)}", 5000

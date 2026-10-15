@@ -255,4 +255,19 @@ def stylesheet() -> str:
     QMenu::item:selected {{ background: {ACCENT_SOFT}; }}
     QGroupBox {{ border: 1px solid {BORDER}; border-radius: 8px; margin-top: 12px; padding-top: 10px; }}
     QGroupBox::title {{ subcontrol-origin: margin; left: 10px; color: {TEXT_MUTED}; }}
+
+    /* ----------------------------------------------- 快速记录（Ctrl+N） */
+    #QuickCapture {{ background: {BG}; border: 1px solid {BORDER}; }}
+    #QuickCaptureInput {{
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid {BORDER_MUTED};
+        border-radius: 0;
+        padding: 12px 14px;
+        font-size: 16px;
+    }}
+    #QuickCaptureInput:focus {{ border-bottom: 1px solid {ACCENT}; }}
+    #QuickCaptureList {{ background: {BG}; border: none; border-radius: 0; }}
+    #QuickCaptureList::item {{ padding: 6px 14px; }}
+    #QuickCaptureHint {{ color: {TEXT_SUBTLE}; font-size: 11px; padding: 6px 14px; }}
     """
