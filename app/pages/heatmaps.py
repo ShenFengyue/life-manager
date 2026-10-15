@@ -37,9 +37,10 @@ from ..widgets.common import (
 from ..widgets.heatmap_calendar import HeatmapCalendar, HeatmapLegend
 
 # ------------------------------------------------------------------ 尺寸
-MINI_SCALE = 0.6  # 迷你热力图：格子 11px × 0.6，一屏能放下十来个节点
-AREA_ROW_HEIGHT = 84
-PROCESS_ROW_HEIGHT = 76
+# 行内热力图保持和旧版一样大（格子 11px）——只是把"一张图占一屏"改成了"一行一张图"。
+ROW_CALENDAR_SCALE = 1.0
+AREA_ROW_HEIGHT = 130
+PROCESS_ROW_HEIGHT = 124
 PROCESS_INDENT = 24  # 进程行相对领域行的缩进
 LABEL_WIDTH = 240  # 名字与统计那一列的固定宽度，保证热力图左边缘对齐
 AREA_GAP = 14  # 领域之间的留白
@@ -191,7 +192,7 @@ class HeatmapRow(QFrame):
         row.addWidget(box, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addSpacing(14)
 
-        self.calendar = HeatmapCalendar(scale=MINI_SCALE)
+        self.calendar = HeatmapCalendar(scale=ROW_CALENDAR_SCALE)
         self.calendar.dateClicked.connect(lambda _day: self.openRequested.emit())
         row.addWidget(self.calendar, 0, Qt.AlignmentFlag.AlignVCenter)
 

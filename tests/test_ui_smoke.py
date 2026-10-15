@@ -1782,6 +1782,17 @@ class UiSmokeTest(unittest.TestCase):
             all(row.isVisibleTo(page) for row in page._process_rows.values())
         )
 
+    def test_row_calendar_keeps_full_size(self) -> None:
+        """行内热力图保持原来的大小（格子 11px）—— 缩过一次，被要求改回来了。"""
+        from app.widgets.heatmap_calendar import HeatmapCalendar
+
+        page = self._heatmap_page()
+        row = next(iter(page._process_rows.values()))
+        default = HeatmapCalendar()
+        self.assertEqual(row.calendar.width(), default.width())
+        self.assertEqual(row.calendar.height(), default.height())
+        self.assertGreater(row.calendar.width(), 700)
+
 
 if __name__ == "__main__":
     unittest.main()
