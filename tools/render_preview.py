@@ -184,6 +184,18 @@ def main() -> int:
     quick.grab().save(str(OUTPUT_DIR / "quick-capture-note.png"))
     print(f"已渲染 quick-capture-note → {OUTPUT_DIR / 'quick-capture-note.png'}")
 
+    # 热力图页点开的全屏大图
+    from app.pages.heatmaps import HeatmapDetailDialog
+
+    process = service.node_by_name("进程 3-3", NodeType.PROCESS)
+    detail = HeatmapDetailDialog(service, process, "process", clock.today())
+    detail.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+    detail.resize(1780, 520)
+    detail.show()
+    _settle(app)
+    detail.grab().save(str(OUTPUT_DIR / "heatmap-detail.png"))
+    print(f"已渲染 heatmap-detail → {OUTPUT_DIR / 'heatmap-detail.png'}")
+
     db.close()
     return 0
 

@@ -261,6 +261,16 @@ def stylesheet() -> str:
     QGroupBox::title {{ subcontrol-origin: margin; left: 10px; color: {TEXT_MUTED}; }}
 
     /* ----------------------------------------------- 快速记录（Ctrl+N） */
+    /* ------------------------------------------ 热力图页（一行一个节点） */
+    #HeatmapDivider {{ background: {BORDER_MUTED}; border: none; }}
+    #HeatmapRow, #HeatmapRowArea {{ background: transparent; border-radius: 8px; }}
+    #HeatmapRow:hover, #HeatmapRowArea:hover {{ background: {SURFACE_ALT}; }}
+    #RowToggle {{
+        background: transparent; border: none; padding: 0;
+        color: {TEXT_MUTED}; font-size: 10px;
+    }}
+    #RowToggle:hover {{ color: {ACCENT}; }}
+
     #QuickCapture {{ background: {BG}; border: 1px solid {BORDER}; }}
     #QuickCaptureInput {{
         background: transparent;

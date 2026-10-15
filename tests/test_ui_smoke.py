@@ -137,20 +137,30 @@ class UiSmokeTest(unittest.TestCase):
         calendar.set_data({"2026-10-15": 1})
         self.assertFalse(calendar.is_empty)
 
-    def test_heatmap_page_spacing_is_tiered(self) -> None:
-        """热力图页只用间距分层：块内紧凑、块间宽松，进程比领域缩进更深。"""
+    def test_heatmap_page_rows_are_tiered(self) -> None:
+        """热力图页：领域行比进程行高、进程行有缩进、领域之间有分隔线。"""
+        from PySide6.QtWidgets import QFrame
+
+        from app.pages.heatmaps import (
+            AREA_ROW_HEIGHT,
+            PROCESS_INDENT,
+            PROCESS_ROW_HEIGHT,
+        )
+
         page = self.window.pages["heatmaps"]
         self.window.set_page("heatmaps")
         self.app.processEvents()
-        area_section = next(iter(page._area_sections.values()))
-        process_section = next(iter(page._process_sections.values()))
-        block = next(iter(page._area_blocks.values()))
+        area_row = next(iter(page._area_rows.values()))
+        process_row = next(iter(page._process_rows.values()))
 
-        self.assertGreater(page.container_layout.spacing(), block.layout().spacing())
-        self.assertGreater(process_section.layout().contentsMargins().top(), 0)
-        self.assertGreater(
-            process_section.body.contentsMargins().left(),
-            area_section.body.contentsMargins().left(),
+        self.assertEqual(area_row.height(), AREA_ROW_HEIGHT)
+        self.assertEqual(process_row.height(), PROCESS_ROW_HEIGHT)
+        self.assertGreater(AREA_ROW_HEIGHT, PROCESS_ROW_HEIGHT)
+        spacer = process_row.layout().itemAt(0).spacerItem()
+        self.assertIsNotNone(spacer)
+        self.assertEqual(spacer.sizeHint().width(), PROCESS_INDENT)
+        self.assertGreaterEqual(
+            len(page.container.findChildren(QFrame, "HeatmapDivider")), 2
         )
 
     def test_process_tree_spacing_is_tiered(self) -> None:
@@ -285,7 +295,7 @@ class UiSmokeTest(unittest.TestCase):
         self.window.set_page("heatmaps")
         self.app.processEvents()
         self.assertEqual(
-            list(heatmaps._process_blocks)[:2], after[:2], "热力图页的顺序应与进程树一致"
+            list(heatmaps._process_rows)[:2], after[:2], "热力图页的顺序应与进程树一致"
         )
 
     def test_tree_drop_rules_only_allow_same_level(self) -> None:
@@ -441,8 +451,8 @@ class UiSmokeTest(unittest.TestCase):
         page = self.window.pages["heatmaps"]
         self.window.set_page("heatmaps")
         self.app.processEvents()
-        self.assertEqual(len(page._area_blocks), 3)
-        self.assertEqual(len(page._process_blocks), 9)
+        self.assertEqual(len(page._area_rows), 3)
+        self.assertEqual(len(page._process_rows), 9)
 
     def test_heatmap_renders_github_green_cells(self) -> None:
         english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
@@ -459,11 +469,11 @@ class UiSmokeTest(unittest.TestCase):
                 )
 
         explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
-        block = self.window.pages["heatmaps"]._process_blocks[explore.id]
-        block.apply_window(heatmap_stats.build_calendar())
+        row = self.window.pages["heatmaps"]._process_rows[explore.id]
+        row.apply_window(heatmap_stats.build_calendar())
         self.app.processEvents()
 
-        pixmap = block.calendar.grab()
+        pixmap = row.calendar.grab()
         image = pixmap.toImage()
         colors = {
             image.pixelColor(x, y).name()
@@ -736,13 +746,15 @@ class UiSmokeTest(unittest.TestCase):
         self.window.set_page("heatmaps")
         self.app.processEvents()
 
-        self.assertIn(travel.id, page._deleted_blocks)
-        self.assertNotIn(travel.id, page._process_blocks)
-        block = page._deleted_blocks[travel.id]
+        self.assertIn(travel.id, page._deleted_rows)
+        self.assertNotIn(travel.id, page._process_rows)
+        row = page._deleted_rows[travel.id]
         # 数据保留：删掉的进程热力图里那次活动仍然在
-        self.assertEqual(block.calendar.totals()[0], 1)
-        area_block = page._area_blocks[self.service.node_by_name("领域 3", NodeType.AREA).id]
-        self.assertIn("含已删除进程：进程 3-2", area_block.note_label.text())
+        self.assertEqual(row.calendar.totals()[0], 1)
+        area_row = page._area_rows[
+            self.service.node_by_name("领域 3", NodeType.AREA).id
+        ]
+        self.assertIn("含已删除进程：进程 3-2", area_row.note)
 
     def test_activity_page_can_delete_and_edit_record(self) -> None:
         from app.pages import activity as activity_module
@@ -847,8 +859,8 @@ class UiSmokeTest(unittest.TestCase):
         self.window.set_page("heatmaps")
         heatmap_page = self.window.pages["heatmaps"]
         self.app.processEvents()
-        self.assertEqual(heatmap_page._process_blocks[explore.id].calendar.totals()[0], 1)
-        self.assertEqual(heatmap_page._area_blocks[life.id].calendar.totals()[0], 1)
+        self.assertEqual(heatmap_page._process_rows[explore.id].calendar.totals()[0], 1)
+        self.assertEqual(heatmap_page._area_rows[life.id].calendar.totals()[0], 1)
 
         # 4) 总览的最近活动
         self.window.set_page("overview")
@@ -1203,9 +1215,9 @@ class UiSmokeTest(unittest.TestCase):
         explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
         self.window.set_page("heatmaps")
         self.app.processEvents()
-        section = page._process_sections[explore.id]
-        self.assertEqual(section.note(), "")
-        self.assertTrue(section._note.isHidden())
+        row = page._process_rows[explore.id]
+        self.assertEqual(row.note, "")
+        self.assertEqual(row._note_label.text(), "")
 
         class FakeInputDialog:
             @staticmethod
@@ -1223,15 +1235,15 @@ class UiSmokeTest(unittest.TestCase):
         self.assertEqual(
             self.service.require_node(explore.id).description, "精听为主，先保连续 4 周"
         )
-        self.assertFalse(section._note.isHidden())
-        self.assertEqual(section.note(), "精听为主，先保连续 4 周")
+        self.assertEqual(row.note, "精听为主，先保连续 4 周")
+        self.assertEqual(row._note_label.text(), "精听为主，先保连续 4 周")
 
         # 清空之后又完全不留空位
         self.service.set_description(explore.id, "")
         self.window.on_data_changed()
         self.app.processEvents()
-        self.assertEqual(section.note(), "")
-        self.assertTrue(section._note.isHidden())
+        self.assertEqual(row.note, "")
+        self.assertEqual(row._note_label.text(), "")
 
     def test_overview_shows_total_heatmap(self) -> None:
         """总览第一张热力图 = 全部领域与线程的总热力图。"""
@@ -1324,7 +1336,8 @@ class UiSmokeTest(unittest.TestCase):
         # 取消确认后事件还在
         self.assertGreater(self.service.event_count(english.id), 0)
 
-    def test_process_note_entry_is_on_section_header_right_click(self) -> None:
+    def test_process_note_entry_is_on_row_right_click(self) -> None:
+        """右键进程那一行 → 注释入口；领域行没有（注释是进程级的东西）。"""
         from PySide6.QtGui import QContextMenuEvent
 
         from app.pages import heatmaps as heatmaps_module
@@ -1335,12 +1348,14 @@ class UiSmokeTest(unittest.TestCase):
         self.window.show()
         self.window.set_page("heatmaps")
         self.app.processEvents()
-        section = page._process_sections[explore.id]
-        self.assertGreater(section.height(), 80, "分区还没完成布局")
+
+        row = page._process_rows[explore.id]
         requested: list = []
-        section.headerContextRequested.connect(requested.append)
+        row.noteRequested.connect(lambda: requested.append(1))
 
         class CancellingInputDialog:
+            """右键会真的去弹输入框 —— 这里替换成"点了取消"，免得测试卡住。"""
+
             @staticmethod
             def getMultiLineText(*args, **kwargs):
                 return "", False
@@ -1348,28 +1363,30 @@ class UiSmokeTest(unittest.TestCase):
         original = heatmaps_module.QInputDialog
         heatmaps_module.QInputDialog = CancellingInputDialog
         try:
-            header_point = section._toggle.geometry().center()
+            center = row.rect().center()
             QApplication.sendEvent(
-                section,
+                row,
+                QContextMenuEvent(
+                    QContextMenuEvent.Reason.Mouse, center, row.mapToGlobal(center)
+                ),
+            )
+            self.app.processEvents()
+            self.assertEqual(len(requested), 1, "右键进程行没有触发注释入口")
+
+            area_row = next(iter(page._area_rows.values()))
+            area_requested: list = []
+            area_row.noteRequested.connect(lambda: area_requested.append(1))
+            area_center = area_row.rect().center()
+            QApplication.sendEvent(
+                area_row,
                 QContextMenuEvent(
                     QContextMenuEvent.Reason.Mouse,
-                    header_point,
-                    section.mapToGlobal(header_point),
+                    area_center,
+                    area_row.mapToGlobal(area_center),
                 ),
             )
             self.app.processEvents()
-            self.assertEqual(len(requested), 1, "右键标题行没有触发注释入口")
-
-            # 点在内容区（热力图那一带）不应触发
-            body_point = QPoint(10, section.height() - 4)
-            QApplication.sendEvent(
-                section,
-                QContextMenuEvent(
-                    QContextMenuEvent.Reason.Mouse, body_point, section.mapToGlobal(body_point)
-                ),
-            )
-            self.app.processEvents()
-            self.assertEqual(len(requested), 1)
+            self.assertEqual(area_requested, [], "领域行不该有注释入口")
         finally:
             heatmaps_module.QInputDialog = original
 
@@ -1474,11 +1491,11 @@ class UiSmokeTest(unittest.TestCase):
         page = self.window.pages["heatmaps"]
         self.window.set_page("heatmaps")
         self.app.processEvents()
-        self.assertEqual(page._process_blocks[explore.id].calendar.totals()[0], 1)
+        self.assertEqual(page._process_rows[explore.id].calendar.totals()[0], 1)
 
         dialog = self._open_dialog_without_blocking(
             heatmaps_module,
-            lambda: page._process_blocks[explore.id]._on_date_clicked("2026-10-15"),
+            lambda: page._process_rows[explore.id]._on_date_clicked("2026-10-15"),
         )
         self.assertEqual(dialog.table.rowCount(), 1)
         self._delete_first_row_in_dialog(dialog)
@@ -1486,7 +1503,7 @@ class UiSmokeTest(unittest.TestCase):
         # 1) 弹窗自己的列表立即变空（loader 是现场查询，不是快照）
         self.assertEqual(dialog.table.rowCount(), 0)
         # 2) 背后的热力图立即变浅，不用切页面
-        self.assertEqual(page._process_blocks[explore.id].calendar.totals()[0], 0)
+        self.assertEqual(page._process_rows[explore.id].calendar.totals()[0], 0)
         dialog.close()
 
     def test_deleting_inside_total_heatmap_dialog_refreshes_overview(self) -> None:
@@ -1671,6 +1688,99 @@ class UiSmokeTest(unittest.TestCase):
 
         self.assertEqual(page.editor.toPlainText(), "")
         self.assertEqual(diary_store.read_day(today), "")
+
+    # ------------------------------------------------- 热力图页：一行一个节点
+    def _heatmap_page(self):
+        page = self.window.pages["heatmaps"]
+        self.window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.window.show()
+        self.window.set_page("heatmaps")
+        self.app.processEvents()
+        return page
+
+    def test_clicking_a_row_opens_the_full_detail(self) -> None:
+        """点某一行 → 打开那个节点的全屏大图（这里把弹窗换成假的，避免阻塞）。"""
+        from PySide6.QtTest import QTest
+
+        from app.pages import heatmaps as heatmaps_module
+
+        page = self._heatmap_page()
+        explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        opened: list[tuple[str, str]] = []
+
+        class FakeDetail:
+            def __init__(self, service, node, scope_kind, end_date, **kwargs):
+                opened.append((scope_kind, node.id))
+
+            def showMaximized(self) -> None:
+                pass
+
+            def exec(self) -> int:
+                return 0
+
+        original = heatmaps_module.HeatmapDetailDialog
+        heatmaps_module.HeatmapDetailDialog = FakeDetail
+        try:
+            QTest.mouseClick(page._process_rows[explore.id], Qt.MouseButton.LeftButton)
+        finally:
+            heatmaps_module.HeatmapDetailDialog = original
+        self.assertEqual(opened, [("process", explore.id)])
+
+    def test_detail_dialog_is_bigger_and_can_open_a_day(self) -> None:
+        """大图明显比迷你图大；点某一天会列出那天的活动记录。"""
+        from app import clock
+        from app.pages import heatmaps as heatmaps_module
+        from app.pages.heatmaps import HeatmapDetailDialog
+
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        self.service.record_activity(english.id, "大图里的记录", "2026-10-15")
+
+        page = self._heatmap_page()
+        row = page._process_rows[explore.id]
+        dialog = HeatmapDetailDialog(
+            self.service, explore, "process", clock.today(), self
+        )
+        self.assertGreater(dialog.calendar.width(), row.calendar.width())
+        self.assertGreater(dialog.calendar.height(), row.calendar.height())
+        self.assertIn("次活动", dialog.stats_label.text())
+
+        captured = self._open_dialog_without_blocking(
+            heatmaps_module, lambda: dialog._on_day_clicked("2026-10-15")
+        )
+        self.assertEqual(captured.table.rowCount(), 1)
+        cells = " ".join(
+            captured.table.item(0, column).text()
+            for column in range(captured.table.columnCount())
+        )
+        self.assertIn("大图里的记录", cells)
+
+    def test_area_row_collapses_and_expands_its_processes(self) -> None:
+        """领域行的三角：折叠后它下面的进程行全部隐藏，再点一次回来。"""
+        page = self._heatmap_page()
+        area_id = self.service.areas()[0].id
+        rows = page._rows_by_area[area_id]
+        self.assertTrue(rows)
+        self.assertTrue(all(row.isVisibleTo(page) for row in rows))
+
+        page._toggle_area(area_id)
+        self.assertTrue(all(not row.isVisibleTo(page) for row in rows))
+        self.assertEqual(page._area_rows[area_id].toggle_button.text(), "▶")
+
+        page._toggle_area(area_id)
+        self.assertTrue(all(row.isVisibleTo(page) for row in rows))
+        self.assertEqual(page._area_rows[area_id].toggle_button.text(), "▼")
+
+    def test_collapse_all_hides_every_process_row(self) -> None:
+        page = self._heatmap_page()
+        page._set_all_expanded(False)
+        self.assertTrue(
+            all(not row.isVisibleTo(page) for row in page._process_rows.values())
+        )
+        page._set_all_expanded(True)
+        self.assertTrue(
+            all(row.isVisibleTo(page) for row in page._process_rows.values())
+        )
 
 
 if __name__ == "__main__":
