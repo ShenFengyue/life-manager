@@ -1847,6 +1847,50 @@ class UiSmokeTest(unittest.TestCase):
         self.assertEqual(row.calendar.height(), default.height())
         self.assertGreater(row.calendar.width(), 700)
 
+    def test_data_page_exports_one_nodes_activities(self) -> None:
+        """数据页：选一个线程 → 导出它的活动记录 CSV（保存对话框换成固定路径）。"""
+        from app.pages import data as data_module
+
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        self.service.record_activity(english.id, "导出用的一条", "2026-10-15")
+        page = self.window.pages["data"]
+        self.window.set_page("data")
+        self.app.processEvents()
+        page.node_export_combo.set_current_node(english.id)
+
+        target = self.tmp / "exported.csv"
+        original_dialog = data_module.QFileDialog.getSaveFileName
+        original_info = data_module.info
+        data_module.QFileDialog.getSaveFileName = staticmethod(
+            lambda *args, **kwargs: (str(target), "CSV 文件 (*.csv)")
+        )
+        data_module.info = lambda *args, **kwargs: None
+        try:
+            page._export_node_activities()
+        finally:
+            data_module.QFileDialog.getSaveFileName = original_dialog
+            data_module.info = original_info
+
+        self.assertTrue(target.exists(), "应该写出 CSV 文件")
+        text = target.read_text(encoding="utf-8-sig")
+        self.assertIn("导出用的一条", text)
+        self.assertIn(str(target), page.node_export_hint.text())
+
+    def test_slogan_has_breathing_room_below_the_title(self) -> None:
+        """标语不再贴着标题，往下挪了一截。"""
+        from PySide6.QtWidgets import QLabel
+
+        sidebar = self.window.sidebar
+        self.window.show()
+        self.app.processEvents()
+        subtitle = sidebar.findChild(QLabel, "SidebarSubtitle")
+        gap = (
+            sidebar.slogan_label.mapTo(sidebar, QPoint(0, 0)).y()
+            - subtitle.mapTo(sidebar, QPoint(0, 0)).y()
+            - subtitle.height()
+        )
+        self.assertGreaterEqual(gap, 24, "标语与标题之间应该留出更多空白")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import shutil
@@ -1043,6 +1044,55 @@ class LifeManagerService:
         shutil.copy2(source, target)
         self.db.connect()
         self.db.initialize(seed=False)
+
+    # ------------------------------------------- 单个节点的活动记录导出
+    def export_activities_csv(
+        self, node_id: str, destination: str | Path | None = None
+    ) -> tuple[Path, int]:
+        """把某个节点的**全部**活动记录导出成 CSV（Excel 可直接打开）。
+
+        领域 = 它下面所有进程与线程的记录；进程 = 它下面线程的记录。
+        口径与界面一致：按活动发生时的归属快照统计，而不是节点现在的归属。
+        按日期从早到晚排列，返回 (文件路径, 条数)。
+        """
+        node = self.require_node(node_id)
+        if node.type is NodeType.AREA:
+            records = self.list_activities(area_id=node_id)
+        elif node.type is NodeType.PROCESS:
+            records = self.list_activities(process_id=node_id)
+        else:
+            records = self.list_activities(thread_id=node_id)
+        records = sorted(
+            records, key=lambda item: (item.activity_date, item.created_at)
+        )
+
+        paths.ensure_directories()
+        if destination is None:
+            safe_name = "".join(
+                "-" if ch in '\\/:*?"<>|' else ch for ch in node.name
+            ).strip()
+            stamp = now_stamp().replace(":", "").replace(" ", "-")
+            destination = paths.EXPORT_DIR / f"{safe_name}-活动记录-{stamp}.csv"
+        target = Path(destination)
+        # utf-8-sig：带 BOM，Excel 打开中文才不会乱码
+        with target.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(("日期", "归属快照", "记在哪", "备注", "记录时间"))
+            for activity in records:
+                target_label = (
+                    "（进程）" if activity.node_type is NodeType.PROCESS else "（线程）"
+                )
+                writer.writerow(
+                    (
+                        activity.activity_date,
+                        activity.path_text,
+                        target_label,
+                        activity.note,
+                        activity.created_at,
+                    )
+                )
+        logger.info("导出活动记录：%s（%d 条）", target, len(records))
+        return target, len(records)
 
     # --------------------------------------------------------------- JSON
     def export_json(self, destination: str | Path | None = None) -> Path:

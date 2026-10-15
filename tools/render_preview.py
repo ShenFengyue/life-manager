@@ -158,6 +158,20 @@ def main() -> int:
         window.grab().save(str(target))
         print(f"已渲染 {key} → {target}")
 
+    # 数据页滚到底部再抓一张：新增的「导出活动记录」在页面下半部分
+    from PySide6.QtWidgets import QScrollArea
+
+    window.resize(1560, 980)
+    window.set_page("data")
+    _settle(app)
+    scroll = window.pages["data"].findChild(QScrollArea)
+    if scroll is not None:
+        bar = scroll.verticalScrollBar()
+        bar.setValue(bar.maximum())
+        _settle(app)
+        window.grab().save(str(OUTPUT_DIR / "data-bottom.png"))
+        print(f"已渲染 data-bottom → {OUTPUT_DIR / 'data-bottom.png'}")
+
     from app.widgets.deleted_nodes import DeletedNodesDialog
 
     dialog = DeletedNodesDialog(service, None)

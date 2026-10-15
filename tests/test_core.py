@@ -816,5 +816,64 @@ class TestChildOrdering(ServiceTestCase):
         self.assertEqual([node.id for node in self.service.threads(process.id)], flipped)
 
 
+class TestActivityExport(ServiceTestCase):
+    """把某个节点的全部活动记录导出成 CSV。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.area = self.service.areas()[0]
+        self.process = self.service.processes(self.area.id)[0]
+        self.thread = None
+        for candidate in self.service.processes(self.area.id):
+            threads = self.service.threads(candidate.id)
+            if threads:
+                self.process = candidate
+                self.thread = threads[0]
+                break
+        self.assertIsNotNone(self.thread, "初始分类里应有一个带线程的进程")
+
+    def test_export_area_covers_children_and_sorts_by_date(self) -> None:
+        self.service.record_activity(self.thread.id, "线程那一条", "2026-10-05")
+        self.service.record_activity(self.process.id, "进程那一条", "2026-10-01")
+
+        target = self.tmp / "area.csv"
+        path, count = self.service.export_activities_csv(self.area.id, target)
+
+        self.assertEqual(path, target)
+        self.assertEqual(count, 2)
+        lines = target.read_text(encoding="utf-8-sig").strip().splitlines()
+        self.assertEqual(len(lines), 3, "应该是表头 + 两条记录")
+        self.assertIn("日期", lines[0])
+        self.assertIn("2026-10-01", lines[1])
+        self.assertIn("进程那一条", lines[1])
+        self.assertIn("2026-10-05", lines[2])
+        self.assertIn("线程那一条", lines[2])
+
+    def test_export_thread_only_includes_its_own_records(self) -> None:
+        self.service.record_activity(self.thread.id, "属于线程", "2026-10-06")
+        self.service.record_activity(self.process.id, "属于进程", "2026-10-06")
+
+        target = self.tmp / "thread.csv"
+        _path, count = self.service.export_activities_csv(self.thread.id, target)
+        self.assertEqual(count, 1)
+        text = target.read_text(encoding="utf-8-sig")
+        self.assertIn("属于线程", text)
+        self.assertNotIn("属于进程", text)
+
+    def test_export_empty_node_writes_header_only(self) -> None:
+        target = self.tmp / "empty.csv"
+        _path, count = self.service.export_activities_csv(self.process.id, target)
+        self.assertEqual(count, 0)
+        lines = target.read_text(encoding="utf-8-sig").strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertIn("备注", lines[0])
+
+    def test_default_file_name_mentions_the_node(self) -> None:
+        path, _count = self.service.export_activities_csv(self.process.id)
+        self.assertEqual(path.parent, paths.EXPORT_DIR)
+        self.assertIn(self.process.name, path.name)
+        self.assertTrue(path.name.endswith(".csv"))
+
+
 if __name__ == "__main__":
     unittest.main()

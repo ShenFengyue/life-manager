@@ -28,8 +28,18 @@ from PySide6.QtWidgets import (
 
 from .. import clock, paths, theme
 from ..appconfig import AppConfig
+from ..models import NodeType
 from ..services import ImportValidationError, LifeManagerService, ValidationError
-from ..widgets.common import Card, Muted, SectionHeader, Subtle, confirm, info, warn
+from ..widgets.common import (
+    Card,
+    Muted,
+    NodeComboBox,
+    SectionHeader,
+    Subtle,
+    confirm,
+    info,
+    warn,
+)
 
 
 class DataPage(QWidget):
@@ -62,6 +72,7 @@ class DataPage(QWidget):
         layout.addWidget(self._build_slogan_card())
         layout.addWidget(self._build_backup_card())
         layout.addWidget(self._build_transfer_card())
+        layout.addWidget(self._build_node_export_card())
         layout.addWidget(self._build_integrity_card())
         layout.addWidget(self._build_window_card())
         layout.addStretch(1)
@@ -331,6 +342,65 @@ class DataPage(QWidget):
             return
         path = self.service.export_json(target)
         info(self, "导出完成", f"已导出：\n{path}")
+
+    # ------------------------------------------------ 导出某个节点的活动记录
+    def _build_node_export_card(self) -> QWidget:
+        card = Card()
+        card.body.addWidget(SectionHeader("导出活动记录"))
+        card.body.addWidget(
+            Muted(
+                "选一个领域、进程或线程，把它全部的历史活动记录导出成 CSV"
+                "（Excel 可以直接打开）。选领域会带上它下面所有进程与线程的记录；"
+                "口径和界面上一致，按活动发生时的归属快照统计。"
+            )
+        )
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.node_export_combo = NodeComboBox()
+        self.node_export_combo.populate(
+            self.service,
+            kinds=(NodeType.AREA, NodeType.PROCESS, NodeType.THREAD),
+        )
+        row.addWidget(self.node_export_combo, 1)
+        export_button = QPushButton("导出为 CSV…")
+        export_button.clicked.connect(self._export_node_activities)
+        row.addWidget(export_button)
+        card.body.addLayout(row)
+        self.node_export_hint = Subtle("")
+        card.body.addWidget(self.node_export_hint)
+        return card
+
+    def _export_node_activities(self) -> None:
+        node_id = self.node_export_combo.current_node_id()
+        if not node_id:
+            warn(self, "无法导出", "请先在上面选择一个领域、进程或线程。")
+            return
+        node = self.service.require_node(node_id)
+        default_name = (
+            f"{node.name}-活动记录-{clock.now().strftime('%Y%m%d-%H%M%S')}.csv"
+        )
+        target, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出活动记录",
+            str(paths.EXPORT_DIR / default_name),
+            "CSV 文件 (*.csv)",
+        )
+        if not target:
+            return
+        try:
+            path, count = self.service.export_activities_csv(node_id, target)
+        except (OSError, ValidationError) as exc:
+            warn(self, "导出失败", str(exc))
+            return
+        self.node_export_hint.setText(f"最近一次导出：{path}")
+        if count:
+            info(self, "导出完成", f"已导出 {count} 条活动记录：\n{path}")
+        else:
+            info(
+                self,
+                "导出完成",
+                f"「{node.name}」目前还没有活动记录，导出的是一个只有表头的 CSV：\n{path}",
+            )
 
     def _import_json(self) -> None:
         source, _ = QFileDialog.getOpenFileName(

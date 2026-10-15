@@ -114,7 +114,8 @@ class Sidebar(QWidget):
         subtitle.setWordWrap(True)
         layout.addWidget(title)
         layout.addWidget(subtitle)
-        layout.addSpacing(10)
+        # 标语和标题之间留出更多空白：原来贴着标题显得太靠上
+        layout.addSpacing(30)
         self._slogan_text = ""
         self.slogan_label = SloganLabel()
         self.slogan_label.editRequested.connect(self.sloganEditRequested.emit)
