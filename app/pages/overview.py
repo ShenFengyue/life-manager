@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtWidgets import (
     QDateEdit,
     QHBoxLayout,
@@ -20,7 +20,8 @@ from PySide6.QtWidgets import (
 
 from .. import heatmap as heatmap_stats
 from .. import theme
-from ..models import Status, today_str
+from ..appconfig import AppConfig
+from ..models import Node, Status, today_str
 from ..services import LifeManagerService, ValidationError
 from ..widgets.common import (
     ActivityTable,
@@ -43,16 +44,26 @@ from ..widgets.heatmap_calendar import HeatmapCalendar, HeatmapLegend
 
 
 class FocusCard(Card):
-    """一个重点：名称、主要归属、状态、下一步行动。"""
+    """一个重点：名称、主要归属、状态、下一步行动。
+
+    卡片本身可以按住拖动 —— 只调整它在总览里的显示顺序，不改任何数据。
+    """
 
     recordRequested = Signal(str)
     detailRequested = Signal(str)
+    dragMoved = Signal(str, QPoint)
+    dragFinished = Signal(str)
+
+    DRAG_THRESHOLD = 6
 
     def __init__(self, service: LifeManagerService, node_id: str, parent: QWidget | None = None) -> None:
         super().__init__(parent, name="FocusCard")
         self.service = service
         self.node_id = node_id
+        self._drag_origin: QPoint | None = None
+        self._dragging = False
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
 
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
@@ -85,6 +96,47 @@ class FocusCard(Card):
         buttons.addStretch(1)
         self.body.addLayout(buttons)
         self.update_content()
+
+    # ------------------------------------------------------------ 拖动换位
+    def mousePressEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_origin = event.position().toPoint()
+            self._dragging = False
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
+        if self._drag_origin is None:
+            return
+        if not self._dragging:
+            offset = event.position().toPoint() - self._drag_origin
+            if offset.manhattanLength() < self.DRAG_THRESHOLD:
+                return
+            self._dragging = True
+            self._set_dragging_style(True)
+        self.dragMoved.emit(self.node_id, event.globalPosition().toPoint())
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
+        if self._drag_origin is not None:
+            was_dragging = self._dragging
+            self._drag_origin = None
+            self._dragging = False
+            if was_dragging:
+                self._set_dragging_style(False)
+                self.dragFinished.emit(self.node_id)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def _set_dragging_style(self, active: bool) -> None:
+        if active:
+            self.setStyleSheet(f"#FocusCard {{ border: 1px solid {theme.ACCENT}; }}")
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        else:
+            self.setStyleSheet("")
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def update_content(self) -> None:
         """只更新文字，不重建控件（避免总览在记录活动后闪烁）。"""
@@ -204,9 +256,16 @@ class OverviewPage(QWidget):
     openNodeRequested = Signal(str)
     openPageRequested = Signal(str)
 
-    def __init__(self, service: LifeManagerService, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        service: LifeManagerService,
+        parent: QWidget | None = None,
+        *,
+        config: AppConfig | None = None,
+    ) -> None:
         super().__init__(parent)
         self.service = service
+        self.config = config
         self._area_cards: list[OverviewHeatmapCard] = []
         self._focus_cards: list[FocusCard] = []
 
@@ -235,7 +294,7 @@ class OverviewPage(QWidget):
         # ---------------------------------------------------------- 当前重点
         focus_header = QHBoxLayout()
         focus_header.addWidget(SectionHeader("当前重点"))
-        hue = Subtle("最多 3 个置顶节点，随时可以调整")
+        hue = Subtle("最多 3 个置顶节点；按住卡片拖动可调整顺序")
         focus_header.addWidget(hue)
         focus_header.addStretch(1)
         layout.addLayout(focus_header)
@@ -318,7 +377,7 @@ class OverviewPage(QWidget):
         self._refresh_recent()
 
     def _refresh_focus(self) -> None:
-        focused = self.service.focused_nodes()
+        focused = self._ordered_focus_nodes()
         if [card.node_id for card in self._focus_cards] != [node.id for node in focused]:
             clear_layout(self.focus_row)
             self._focus_cards = []
@@ -326,6 +385,8 @@ class OverviewPage(QWidget):
                 card = FocusCard(self.service, node.id)
                 card.recordRequested.connect(self._record_for_node)
                 card.detailRequested.connect(self.openNodeRequested.emit)
+                card.dragMoved.connect(self._on_focus_card_moved)
+                card.dragFinished.connect(self._on_focus_drag_finished)
                 self._focus_cards.append(card)
                 self.focus_row.addWidget(card, 1)
             if len(focused) < 3:
@@ -334,6 +395,70 @@ class OverviewPage(QWidget):
             for card in self._focus_cards:
                 card.update_content()
         self.focus_empty.setVisible(not focused)
+
+    # ------------------------------------------------- 当前重点的显示顺序
+    def _focus_order(self) -> list[str]:
+        """配置里记下的显示顺序（只认还在置顶列表里的节点）。"""
+        if self.config is None:
+            return []
+        order = self.config.get("focus_order") or []
+        return [str(item) for item in order] if isinstance(order, list) else []
+
+    def _ordered_focus_nodes(self) -> list[Node]:
+        focused = self.service.focused_nodes()
+        order = self._focus_order()
+        if not order:
+            return focused
+        by_id = {node.id: node for node in focused}
+        ordered = [by_id[node_id] for node_id in order if node_id in by_id]
+        known = set(order)
+        ordered.extend(node for node in focused if node.id not in known)
+        return ordered
+
+    def _on_focus_card_moved(self, node_id: str, global_pos: QPoint) -> None:
+        """拖动中的卡片：按鼠标横向位置算出它该排到第几个。"""
+        if not self._focus_cards:
+            return
+        position = self.mapFromGlobal(global_pos)
+        target = len(self._focus_cards) - 1
+        for index, card in enumerate(self._focus_cards):
+            center_x = card.mapTo(self, card.rect().center()).x()
+            if position.x() < center_x:
+                target = index
+                break
+        self._move_focus_card(node_id, target, save=False)
+
+    def _move_focus_card(
+        self, node_id: str, target_index: int, *, save: bool = True
+    ) -> None:
+        """把某张重点卡片挪到第 target_index 位：只改显示顺序，不碰任何数据。"""
+        ids = [card.node_id for card in self._focus_cards]
+        if node_id not in ids:
+            return
+        current = ids.index(node_id)
+        target = max(0, min(target_index, len(ids) - 1))
+        if current == target:
+            return
+        ids.pop(current)
+        ids.insert(target, node_id)
+        by_id = {card.node_id: card for card in self._focus_cards}
+        self._focus_cards = [by_id[item] for item in ids]
+        for card in self._focus_cards:
+            self.focus_row.removeWidget(card)
+        for index, card in enumerate(self._focus_cards):
+            self.focus_row.insertWidget(index, card, 1)
+        if save:
+            self._save_focus_order()
+
+    def _on_focus_drag_finished(self, _node_id: str) -> None:
+        """松手时才写配置：拖动过程中不反复写文件。"""
+        self._save_focus_order()
+
+    def _save_focus_order(self) -> None:
+        if self.config is None:
+            return
+        self.config.set("focus_order", [card.node_id for card in self._focus_cards])
+        self.config.save()
 
     def _refresh_quick(self) -> None:
         current = self.quick_combo.current_node_id()

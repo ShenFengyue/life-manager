@@ -86,7 +86,7 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.pages: dict[str, QWidget] = {
-            "overview": OverviewPage(service),
+            "overview": OverviewPage(service, config=config),
             "mindmap": MindMapPage(service),
             "processes": ProcessesPage(service),
             "heatmaps": HeatmapsPage(service),

@@ -24,6 +24,9 @@ DEFAULTS: dict[str, Any] = {
     "start_maximized": False,
     "sidebar_collapsed": False,
     "last_page": "overview",
+    # 总览「当前重点」卡片的显示顺序（节点 id 列表）。
+    # 这是纯界面偏好：只影响总览页里的排列，不写数据库、不改动置顶状态本身。
+    "focus_order": [],
 }
 
 

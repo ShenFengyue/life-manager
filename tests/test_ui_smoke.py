@@ -219,6 +219,81 @@ class UiSmokeTest(unittest.TestCase):
             self.window.quick_capture_shortcut.key(), QKeySequence("Ctrl+N")
         )
 
+    def test_focus_cards_keep_manual_order(self) -> None:
+        """当前重点可以手动调序，顺序记在界面配置里，数据本身不受影响。"""
+        area = self.service.areas()[0]
+        ids = [process.id for process in self.service.processes(area.id)[:3]]
+        self.assertEqual(len(ids), 3)
+        for node_id in ids:
+            self.service.set_pinned(node_id, True)
+
+        page = self.window.pages["overview"]
+        page.refresh()
+        self.assertEqual([card.node_id for card in page._focus_cards], ids)
+
+        # 把最后一张挪到最前面
+        page._move_focus_card(ids[-1], 0)
+        expected = [ids[2], ids[0], ids[1]]
+        self.assertEqual([card.node_id for card in page._focus_cards], expected)
+        self.assertEqual(self.config.get("focus_order"), expected)
+
+        # 再次刷新（相当于重开页面）仍然按手动顺序显示
+        page.refresh()
+        self.assertEqual([card.node_id for card in page._focus_cards], expected)
+
+        # 只是显示顺序：置顶状态与集合没有变化
+        self.assertEqual(
+            sorted(node.id for node in self.service.focused_nodes()), sorted(ids)
+        )
+
+    def test_focus_card_drag_uses_pointer_slot(self) -> None:
+        """拖动落点按鼠标横向位置换算：停在第 2 张的左侧，就排到第 2 位。"""
+        area = self.service.areas()[0]
+        ids = [process.id for process in self.service.processes(area.id)[:3]]
+        for node_id in ids:
+            self.service.set_pinned(node_id, True)
+
+        self.window.resize(1400, 900)
+        self.window.show()
+        self.app.processEvents()
+        page = self.window.pages["overview"]
+        page.refresh()
+        self.app.processEvents()
+
+        second = page._focus_cards[1]
+        drop_at = second.mapToGlobal(second.rect().topLeft() + QPoint(5, 5))
+        page._on_focus_card_moved(ids[0], drop_at)
+        self.assertEqual(
+            [card.node_id for card in page._focus_cards], [ids[1], ids[0], ids[2]]
+        )
+
+    def test_focus_card_drag_with_real_mouse_events(self) -> None:
+        """真实鼠标链路：按下 → 拖过阈值 → 移到第三张上 → 松手，卡片换位并写入配置。"""
+        from PySide6.QtTest import QTest
+
+        area = self.service.areas()[0]
+        ids = [process.id for process in self.service.processes(area.id)[:3]]
+        for node_id in ids:
+            self.service.set_pinned(node_id, True)
+
+        self.window.resize(1400, 900)
+        self.window.show()
+        self.app.processEvents()
+        page = self.window.pages["overview"]
+        page.refresh()
+        self.app.processEvents()
+
+        first = page._focus_cards[0]
+        third = page._focus_cards[2]
+        center = first.rect().center()
+        QTest.mousePress(first, Qt.MouseButton.LeftButton, pos=center)
+        QTest.mouseMove(first, center + QPoint(10, 8))
+        target = third.mapTo(first, third.rect().center())
+        QTest.mouseMove(first, target)
+        self.assertEqual([card.node_id for card in page._focus_cards], [ids[1], ids[2], ids[0]])
+        QTest.mouseRelease(first, Qt.MouseButton.LeftButton, pos=target)
+        self.assertEqual(self.config.get("focus_order"), [ids[1], ids[2], ids[0]])
+
     def test_ctrl_n_really_opens_the_capture_panel(self) -> None:
         """端到端：按下 Ctrl+N 会弹出面板（用定时器把它关掉，避免阻塞测试）。"""
         from PySide6.QtCore import QTimer
