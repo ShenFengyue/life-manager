@@ -101,6 +101,67 @@ class UiSmokeTest(unittest.TestCase):
         calendar.set_data({"2026-10-15": 1})
         self.assertFalse(calendar.is_empty)
 
+    def test_heatmap_page_spacing_is_tiered(self) -> None:
+        """热力图页只用间距分层：块内紧凑、块间宽松，进程比领域缩进更深。"""
+        page = self.window.pages["heatmaps"]
+        self.window.set_page("heatmaps")
+        self.app.processEvents()
+        area_section = next(iter(page._area_sections.values()))
+        process_section = next(iter(page._process_sections.values()))
+        block = next(iter(page._area_blocks.values()))
+
+        self.assertGreater(page.container_layout.spacing(), block.layout().spacing())
+        self.assertGreater(process_section.layout().contentsMargins().top(), 0)
+        self.assertGreater(
+            process_section.body.contentsMargins().left(),
+            area_section.body.contentsMargins().left(),
+        )
+
+    def test_process_tree_spacing_is_tiered(self) -> None:
+        """进程树只用间距分层：三级行高递减、缩进加深。"""
+        from app.pages.processes import TREE_INDENT
+
+        page = self.window.pages["processes"]
+        self.window.set_page("processes")
+        self.app.processEvents()
+        tree = page.tree
+        self.assertEqual(tree.indentation(), TREE_INDENT)
+
+        process_item = None
+        for index in range(tree.topLevelItemCount()):
+            area = tree.topLevelItem(index)
+            for child_index in range(area.childCount()):
+                child = area.child(child_index)
+                if child.childCount():
+                    process_item = child
+                    break
+            if process_item is not None:
+                break
+        self.assertIsNotNone(process_item)
+        area_item = process_item.parent()
+        thread_item = process_item.child(0)
+        self.assertGreater(
+            area_item.sizeHint(0).height(), process_item.sizeHint(0).height()
+        )
+        self.assertGreater(
+            process_item.sizeHint(0).height(), thread_item.sizeHint(0).height()
+        )
+
+    def test_area_divider_only_between_areas(self) -> None:
+        """领域之间的分割线：第一个领域上方不画，进程与线程行也不画。"""
+        from app.pages.processes import AreaDividerDelegate, should_draw_area_divider
+
+        tree = self.window.pages["processes"].tree
+        self.assertIsInstance(tree.itemDelegate(), AreaDividerDelegate)
+        self.assertGreaterEqual(tree.topLevelItemCount(), 2)
+
+        first = tree.indexFromItem(tree.topLevelItem(0), 0)
+        second = tree.indexFromItem(tree.topLevelItem(1), 0)
+        child = tree.indexFromItem(tree.topLevelItem(0).child(0), 0)
+        self.assertFalse(should_draw_area_divider(first))
+        self.assertTrue(should_draw_area_divider(second))
+        self.assertFalse(should_draw_area_divider(child))
+
     def test_mindmap_card_marks_today_records(self) -> None:
         """记录地图卡片会带上"今天记过几次"，供绿色小圆点使用。"""
         area = self.service.areas()[0]

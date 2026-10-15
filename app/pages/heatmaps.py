@@ -33,6 +33,14 @@ from ..widgets.common import (
 )
 from ..widgets.heatmap_calendar import HeatmapCalendar, HeatmapLegend
 
+# ------------------------------------------------------------------ 间距分层
+# 纯间距表达层级：领域块之间空得大、每个进程块上方留一口气，
+# 而块内部（标题 → 热力图 → 统计行）保持紧凑，这样"贴在一起的就是一家"。
+AREA_GAP = 30
+PROCESS_GAP = 18
+PROCESS_INDENT = 26
+BLOCK_SPACING = 8
+
 
 class HeatmapBlock(QWidget):
     """一张热力图（Area 或 Process 作用域）及其统计信息。"""
@@ -57,7 +65,7 @@ class HeatmapBlock(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(BLOCK_SPACING)
 
         if title:
             title_label = QLabel(title)
@@ -184,7 +192,7 @@ class HeatmapsPage(QWidget):
         scroll.setWidget(self.container)
         self.container_layout = QVBoxLayout(self.container)
         self.container_layout.setContentsMargins(0, 0, 8, 0)
-        self.container_layout.setSpacing(10)
+        self.container_layout.setSpacing(AREA_GAP)
         self.container_layout.addStretch(1)
         self.refresh()
 
@@ -283,7 +291,11 @@ class HeatmapsPage(QWidget):
             section.body.addWidget(area_block)
 
             for process in self.service.processes(area.id):
-                process_section = CollapsibleSection(process.name, expanded=True, indent=16)
+                process_section = CollapsibleSection(
+                    process.name, expanded=True, indent=PROCESS_INDENT
+                )
+                # 每个进程块上方留一口气，块与块之间的间距明显大于块内部
+                process_section.layout().setContentsMargins(0, PROCESS_GAP, 0, 0)
                 process_section.headerContextRequested.connect(
                     lambda _pos, pid=process.id: self._edit_process_note(pid)
                 )

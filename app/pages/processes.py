@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QFont
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QAction, QColor, QFont, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStyledItemDelegate,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -44,6 +45,52 @@ from ..widgets.common import (
     warn,
 )
 
+# ------------------------------------------------------------------ 间距分层
+# 纯间距表达层级：三级给三档行高，缩进加深，领域之间再补一条内缩的分割线。
+ROW_HEIGHTS = {
+    NodeType.AREA: 40,
+    NodeType.PROCESS: 32,
+    NodeType.THREAD: 26,
+}
+TREE_INDENT = 26
+SPLITTER_HANDLE_WIDTH = 12
+
+
+def should_draw_area_divider(index) -> bool:
+    """领域之间的分割线：只画在「第二个及以后」的领域行顶部。"""
+    if index is None or index.parent().isValid():
+        return False
+    return index.row() > 0
+
+
+class AreaDividerDelegate(QStyledItemDelegate):
+    """在领域行上方画一条两端不顶头的浅灰分割线。
+
+    线的两端各留一点内缩，不贴着树的两边，看起来才像是"分组边界"而不是表格框线。
+    """
+
+    LEFT_INSET = 10
+    RIGHT_INSET = 14
+
+    def paint(self, painter, option, index) -> None:  # pragma: no cover - 需要 GUI
+        super().paint(painter, option, index)
+        if not should_draw_area_divider(index):
+            return
+        model = index.model()
+        last_column = model.columnCount() - 1 if model is not None else index.column()
+        rect = option.rect
+        left = rect.left() + (self.LEFT_INSET if index.column() == 0 else 0)
+        right = rect.right() + (
+            1 if index.column() != last_column else -self.RIGHT_INSET
+        )
+        if right <= left:
+            return
+        painter.save()
+        painter.setPen(QPen(QColor(theme.BORDER)))
+        y = rect.top()
+        painter.drawLine(int(left), int(y), int(right), int(y))
+        painter.restore()
+
 
 class ProcessesPage(QWidget):
     changed = Signal()
@@ -66,7 +113,7 @@ class ProcessesPage(QWidget):
         layout.addWidget(self._build_toolbar())
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(1)
+        splitter.setHandleWidth(SPLITTER_HANDLE_WIDTH)
         splitter.addWidget(self._build_tree())
         splitter.addWidget(self._build_details())
         splitter.setStretchFactor(0, 5)
@@ -146,7 +193,10 @@ class ProcessesPage(QWidget):
         self.tree.setColumnWidth(2, 220)
         self.tree.setColumnWidth(3, 190)
         self.tree.setColumnWidth(4, 48)
-        self.tree.setUniformRowHeights(True)
+        # 三级不同行高，所以要关掉"等高行"优化
+        self.tree.setUniformRowHeights(False)
+        self.tree.setIndentation(TREE_INDENT)
+        self.tree.setItemDelegate(AreaDividerDelegate(self.tree))
         self.tree.setAnimated(True)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
@@ -175,6 +225,7 @@ class ProcessesPage(QWidget):
     def _build_item(self, node: Node) -> QTreeWidgetItem:
         item = QTreeWidgetItem()
         item.setData(0, Qt.ItemDataRole.UserRole, node.id)
+        item.setSizeHint(0, QSize(0, ROW_HEIGHTS[node.type]))
         item.setText(0, node.name)
         if node.type is NodeType.AREA:
             font = QFont()
