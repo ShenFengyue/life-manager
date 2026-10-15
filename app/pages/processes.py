@@ -9,6 +9,7 @@ from __future__ import annotations
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QPen
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QDialog,
     QHBoxLayout,
@@ -92,6 +93,36 @@ class AreaDividerDelegate(QStyledItemDelegate):
         painter.restore()
 
 
+class NodeTree(QTreeWidget):
+    """进程树本体：允许**同一父级内**拖动调整顺序。
+
+    跨层级（把一个线程拖进另一个进程）在这里会被拒绝 —— 那是「移动到…」的活，
+    因为它改变归属、要写历史事件。拖动结束后发出 orderChanged，由页面写回数据库。
+    """
+
+    orderChanged = Signal()
+
+    def can_drop(self, source, target, indicator) -> bool:
+        """这次拖放是否允许：只允许同一父级内调整顺序。"""
+        if source is None or target is None or source is target:
+            return False
+        # "放进某个节点里" = 改归属，交给「移动到…」
+        if indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
+            return False
+        return source.parent() is target.parent()
+
+    def dropEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
+        selected = self.selectedItems()
+        target = self.itemAt(event.position().toPoint())
+        if len(selected) != 1 or not self.can_drop(
+            selected[0] if selected else None, target, self.dropIndicatorPosition()
+        ):
+            event.ignore()
+            return
+        super().dropEvent(event)
+        self.orderChanged.emit()
+
+
 class ProcessesPage(QWidget):
     changed = Signal()
     openActivityRequested = Signal(str)
@@ -146,6 +177,8 @@ class ProcessesPage(QWidget):
         for label, handler in (
             ("重命名", self._rename_selected),
             ("移动到…", self._move_selected),
+            ("上移一位", lambda: self._move_selected_order(-1)),
+            ("下移一位", lambda: self._move_selected_order(1)),
             ("关联…", self._manage_associations),
             ("置顶", self._toggle_pin),
             ("记录活动", self._record_for_selected),
@@ -185,7 +218,7 @@ class ProcessesPage(QWidget):
 
     # ---------------------------------------------------------------- 树
     def _build_tree(self) -> QWidget:
-        self.tree = QTreeWidget()
+        self.tree = NodeTree()
         self.tree.setColumnCount(5)
         self.tree.setHeaderLabels(("名称", "状态", "下一步行动", "关联", "重点"))
         self.tree.setColumnWidth(0, 260)
@@ -198,6 +231,11 @@ class ProcessesPage(QWidget):
         self.tree.setIndentation(TREE_INDENT)
         self.tree.setItemDelegate(AreaDividerDelegate(self.tree))
         self.tree.setAnimated(True)
+        # 同一层内可以拖动调整顺序（跨层级会被拒绝，见 NodeTree.dropEvent）
+        self.tree.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
+        self.tree.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.tree.setDropIndicatorShown(True)
+        self.tree.orderChanged.connect(self._on_tree_order_changed)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.tree.itemSelectionChanged.connect(self._on_selection_changed)
@@ -205,6 +243,66 @@ class ProcessesPage(QWidget):
         self.tree.itemCollapsed.connect(self._on_collapsed)
         self.tree.itemDoubleClicked.connect(lambda *_: self._record_for_selected())
         return self.tree
+
+    # ------------------------------------------------------------ 调整顺序
+    def _on_tree_order_changed(self) -> None:
+        """拖拽结束：把树里的新顺序写进数据库，然后重建树。
+
+        内部拖拽会让 Qt 重建 QTreeWidgetItem，所以这里必须整体重建一次，
+        否则页面里按 id 记的映射表会指向已经不存在的旧对象。
+        """
+        self._apply_tree_order()
+        self.refresh(force=True)
+        self.changed.emit()
+
+    def _apply_tree_order(self) -> None:
+        """把树里当前的显示顺序写回数据库（只改 position）。"""
+
+        def walk(parent_item: QTreeWidgetItem | None, parent_id: str | None) -> None:
+            count = (
+                parent_item.childCount()
+                if parent_item is not None
+                else self.tree.topLevelItemCount()
+            )
+            children: list[tuple[QTreeWidgetItem, str]] = []
+            for index in range(count):
+                item = (
+                    parent_item.child(index)
+                    if parent_item is not None
+                    else self.tree.topLevelItem(index)
+                )
+                children.append((item, item.data(0, Qt.ItemDataRole.UserRole)))
+            if children:
+                self.service.apply_child_order(
+                    parent_id, [node_id for _item, node_id in children]
+                )
+            for item, node_id in children:
+                walk(item, node_id)
+
+        walk(None, None)
+
+    def _move_selected_order(self, step: int) -> None:
+        """把选中的节点在同一层里上移或下移一位（右键菜单用）。"""
+        item = self.tree.currentItem()
+        if item is None:
+            return
+        node_id = item.data(0, Qt.ItemDataRole.UserRole)
+        parent = item.parent()
+        parent_id = (
+            parent.data(0, Qt.ItemDataRole.UserRole) if parent is not None else None
+        )
+        siblings = [node.id for node in self.service.children(parent_id)]
+        if node_id not in siblings:
+            return
+        index = siblings.index(node_id)
+        target = index + step
+        if not 0 <= target < len(siblings):
+            return
+        siblings.pop(index)
+        siblings.insert(target, node_id)
+        self.service.apply_child_order(parent_id, siblings)
+        self.refresh(force=True)
+        self.changed.emit()
 
     def _on_expanded(self, item: QTreeWidgetItem) -> None:
         if not self._building:
@@ -528,6 +626,8 @@ class ProcessesPage(QWidget):
             ("记录活动", self._record_for_selected),
             ("重命名", self._rename_selected),
             ("移动到…", self._move_selected),
+            ("上移一位", lambda: self._move_selected_order(-1)),
+            ("下移一位", lambda: self._move_selected_order(1)),
             ("关联…", self._manage_associations),
             ("置顶 / 取消置顶", self._toggle_pin),
             ("设置为进行中", lambda: self._set_status(Status.DOING)),

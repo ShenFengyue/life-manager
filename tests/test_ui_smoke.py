@@ -259,6 +259,59 @@ class UiSmokeTest(unittest.TestCase):
         self.assertIn("当前显示", newest)
         self.assertIn("第一版", page.slogan_table.item(1, 1).text())
 
+    def test_tree_move_order_syncs_to_mindmap_and_heatmaps(self) -> None:
+        """进程树里「下移一位」：记录地图与热力图页的顺序跟着一起变。"""
+        area = self.service.areas()[0]
+        before = [node.id for node in self.service.processes(area.id)]
+        self.assertGreaterEqual(len(before), 2)
+
+        page = self.window.pages["processes"]
+        self.window.set_page("processes")
+        self.app.processEvents()
+        page.tree.setCurrentItem(page.tree.topLevelItem(0).child(0))
+        page._move_selected_order(1)
+
+        after = [node.id for node in self.service.processes(area.id)]
+        self.assertEqual(after[0], before[1])
+        self.assertEqual(after[1], before[0])
+
+        mindmap = self.window.pages["mindmap"]
+        self.window.set_page("mindmap")
+        self.app.processEvents()
+        seen = [node_id for node_id in mindmap.view._cards if node_id in set(before)]
+        self.assertEqual(seen[:2], after[:2], "记录地图的顺序应与进程树一致")
+
+        heatmaps = self.window.pages["heatmaps"]
+        self.window.set_page("heatmaps")
+        self.app.processEvents()
+        self.assertEqual(
+            list(heatmaps._process_blocks)[:2], after[:2], "热力图页的顺序应与进程树一致"
+        )
+
+    def test_tree_drop_rules_only_allow_same_level(self) -> None:
+        """拖放规则：同一层内可调序；跨层级、「放进节点里」、拖到自己身上都拒绝。"""
+        from PySide6.QtWidgets import QAbstractItemView
+
+        tree = self.window.pages["processes"].tree
+        first_area = tree.topLevelItem(0)
+        second_area = tree.topLevelItem(1)
+        process_a = first_area.child(0)
+        process_b = first_area.child(1)
+        Above = QAbstractItemView.DropIndicatorPosition.AboveItem
+        Below = QAbstractItemView.DropIndicatorPosition.BelowItem
+        On = QAbstractItemView.DropIndicatorPosition.OnItem
+
+        self.assertTrue(tree.can_drop(process_b, process_a, Above))
+        self.assertTrue(tree.can_drop(process_a, process_b, Below))
+        self.assertFalse(tree.can_drop(process_a, process_a, Above))
+        self.assertFalse(tree.can_drop(process_a, second_area, Below))
+        self.assertFalse(tree.can_drop(process_a, second_area, On))
+        if process_b.childCount():
+            self.assertFalse(
+                tree.can_drop(process_b.child(0), process_a, Above),
+                "线程不能靠拖动换到别的进程下（那是「移动到…」的活）",
+            )
+
     def test_focus_cards_keep_manual_order(self) -> None:
         """当前重点可以手动调序，顺序记在界面配置里，数据本身不受影响。"""
         area = self.service.areas()[0]

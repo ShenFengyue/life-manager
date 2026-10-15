@@ -273,6 +273,28 @@ class LifeManagerService:
             ).fetchone()
         return int(row["p"] + 1) if row and row["p"] is not None else 0
 
+    def apply_child_order(self, parent_id: str | None, ordered_ids: list[str]) -> None:
+        """按给定顺序重排同一父级下的节点（只改显示顺序）。
+
+        记录地图与热力图都按同一个 `position` 排序，所以它们会一起变。
+        这里**只动 position**：不改归属、不写历史事件（调序不是归属变更），
+        也不动 updated_at（否则会影响「当前重点」的排序）。
+
+        传进来的 id 里不属于该父级的会被忽略；没出现在列表里的兄弟节点
+        （例如折叠过滤掉的已归档节点）保持原来的位置不动。
+        """
+        known = {node.id for node in self.children(parent_id)}
+        ordered = [node_id for node_id in ordered_ids if node_id in known]
+        if not ordered:
+            return
+        with self.db.transaction() as tx:
+            for index, node_id in enumerate(ordered):
+                tx.execute(
+                    "UPDATE nodes SET position = ? WHERE id = ?", (index, node_id)
+                )
+        logger.info("调整同级顺序：%s", "、".join(ordered))
+        self._touch()
+
     def rename_node(self, node_id: str, new_name: str) -> None:
         new_name = (new_name or "").strip()
         if not new_name:

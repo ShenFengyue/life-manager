@@ -756,5 +756,65 @@ class TestDataCorruptionHandling(ServiceTestCase):
         self.assertGreater(broken_path.stat().st_size, 0)
 
 
+class TestChildOrdering(ServiceTestCase):
+    """同级顺序：只改显示顺序，不动归属、不影响其它层级。"""
+
+    def test_reorder_processes_inside_an_area(self) -> None:
+        area = self.service.areas()[0]
+        before = [node.id for node in self.service.processes(area.id)]
+        self.assertGreaterEqual(len(before), 3)
+        target = [before[2], before[0], before[1]]
+        self.service.apply_child_order(area.id, target)
+        after = [node.id for node in self.service.processes(area.id)]
+        self.assertEqual(after, target + before[3:])
+
+    def test_reorder_is_limited_to_that_level(self) -> None:
+        first, second = self.service.areas()[:2]
+        before_first = [node.id for node in self.service.processes(first.id)]
+        before_second = [node.id for node in self.service.processes(second.id)]
+        self.service.apply_child_order(first.id, list(reversed(before_first)))
+        self.assertEqual(
+            [node.id for node in self.service.processes(first.id)],
+            list(reversed(before_first)),
+        )
+        self.assertEqual(
+            [node.id for node in self.service.processes(second.id)], before_second
+        )
+
+    def test_reorder_top_level_areas(self) -> None:
+        areas = [node.id for node in self.service.areas()]
+        self.assertGreaterEqual(len(areas), 3)
+        target = list(reversed(areas))
+        self.service.apply_child_order(None, target)
+        self.assertEqual([node.id for node in self.service.areas()], target)
+
+    def test_unknown_and_foreign_ids_are_ignored(self) -> None:
+        first, second = self.service.areas()[:2]
+        before = [node.id for node in self.service.processes(first.id)]
+        foreign = [node.id for node in self.service.processes(second.id)]
+        self.service.apply_child_order(first.id, ["不存在的节点"] + foreign)
+        self.assertEqual(
+            [node.id for node in self.service.processes(first.id)], before
+        )
+        self.assertEqual(
+            [node.id for node in self.service.processes(second.id)], foreign
+        )
+
+    def test_threads_can_be_reordered_inside_a_process(self) -> None:
+        process = None
+        for area in self.service.areas():
+            for candidate in self.service.processes(area.id):
+                if len(self.service.threads(candidate.id)) >= 2:
+                    process = candidate
+                    break
+            if process is not None:
+                break
+        self.assertIsNotNone(process, "初始分类里应有一个带两条线程的进程")
+        threads = [node.id for node in self.service.threads(process.id)]
+        flipped = list(reversed(threads))
+        self.service.apply_child_order(process.id, flipped)
+        self.assertEqual([node.id for node in self.service.threads(process.id)], flipped)
+
+
 if __name__ == "__main__":
     unittest.main()
