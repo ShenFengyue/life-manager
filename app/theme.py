@@ -139,22 +139,16 @@ def stylesheet() -> str:
     #Sidebar {{ background: {SIDEBAR_BG}; border-right: 1px solid {BORDER_MUTED}; }}
     #SidebarTitle {{ color: {TEXT}; font-size: 16px; font-weight: 600; }}
     #SidebarSubtitle {{ color: {TEXT_SUBTLE}; font-size: 11px; }}
-    #NavGroup {{
-        background: {BG};
-        border: 1px solid {BORDER};
-        border-radius: 10px;
-    }}
+    /* 每个导航按钮是独立的圆角矩形，不再包在一个分组框里 */
     #NavButton {{
-        text-align: left;
-        border: none;
-        border-left: 3px solid transparent;
-        border-radius: 0;
-        background: transparent;
+        text-align: center;
+        background: {BG};
+        border: 1px solid {BORDER_MUTED};
+        border-radius: 10px;
         padding: 0;
     }}
-    #NavButton:hover {{ background: {SURFACE}; }}
-    #NavButton:checked {{ background: {ACCENT_SOFT}; border-left: 3px solid {ACCENT}; }}
-    #NavSeparator {{ background: {BORDER_MUTED}; border: none; }}
+    #NavButton:hover {{ background: {SURFACE}; border-color: {BORDER}; }}
+    #NavButton:checked {{ background: {ACCENT_SOFT}; border-color: {ACCENT}; }}
 
     /* -------------------------------------------------------- 顶栏 */
     #TopBar {{ background: {BG}; border-bottom: 1px solid {BORDER_MUTED}; }}

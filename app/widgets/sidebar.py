@@ -1,8 +1,8 @@
 """左侧导航（可收起）。
 
-按钮做得更大、之间有明确分界线，点击更省事：
-每个条目是一整行（高约 46px），行间有 1px 分隔线，选中行左侧有一条强调色竖条，
-右侧显示对应的快捷键。
+六个导航按钮是**彼此独立的圆角矩形**（白底 + 1px 浅边框，选中时浅蓝底 + 蓝边 + 蓝字），
+整组垂直居中在左栏中间；「数据」样式相同，固定在左栏最下面。
+快捷键不再显示在界面上，但功能仍然保留（注册在 main_window 里）。
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -36,25 +35,18 @@ BOTTOM_ITEMS: tuple[tuple[str, str, str], ...] = (("data", "数据", "Ctrl+7"),)
 ALL_NAV_ITEMS: tuple[tuple[str, str, str], ...] = NAV_ITEMS + BOTTOM_ITEMS
 
 
-def _separator() -> QFrame:
-    line = QFrame()
-    line.setObjectName("NavSeparator")
-    line.setFixedHeight(1)
-    return line
-
-
 class NavButton(QPushButton):
-    """一行导航：左边名称，右边快捷键。"""
+    """一个导航按钮：名称居中；样式（圆角、边框、选中态）见 theme.stylesheet()。"""
 
     def __init__(self, label: str, shortcut: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("NavButton")
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(46)
+        self.setMinimumHeight(44)
 
         row = QHBoxLayout(self)
-        row.setContentsMargins(16, 10, 14, 10)
+        row.setContentsMargins(14, 10, 14, 10)
         row.setSpacing(8)
         self.label = QLabel(label)
         self.label.setObjectName("NavLabel")
@@ -83,6 +75,7 @@ class Sidebar(QWidget):
     pageSelected = Signal(str)
 
     WIDTH = 248
+    BUTTON_GAP = 8
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -91,7 +84,7 @@ class Sidebar(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 18, 16, 16)
-        layout.setSpacing(6)
+        layout.setSpacing(0)
 
         title = QLabel("Life Manager")
         title.setObjectName("SidebarTitle")
@@ -100,36 +93,33 @@ class Sidebar(QWidget):
         subtitle.setWordWrap(True)
         layout.addWidget(title)
         layout.addWidget(subtitle)
-        layout.addSpacing(16)
 
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self.buttons: dict[str, QPushButton] = {}
-        layout.addWidget(self._build_group(NAV_ITEMS))
 
+        # 上下各留一半弹性空白：六个按钮整组落在左栏中间
         layout.addStretch(1)
-        # 「数据」固定在左栏最下面
-        layout.addWidget(self._build_group(BOTTOM_ITEMS))
+        for index, (key, label, shortcut) in enumerate(NAV_ITEMS):
+            if index:
+                layout.addSpacing(self.BUTTON_GAP)
+            self._add_button(layout, key, label, shortcut)
+        layout.addStretch(1)
+
+        # 「数据」固定在左栏最下面，样式与上面六个一致
+        data_key, data_label, data_shortcut = BOTTOM_ITEMS[0]
+        self._add_button(layout, data_key, data_label, data_shortcut)
 
         self.set_current("overview")
 
-    def _build_group(self, items: tuple[tuple[str, str, str], ...]) -> QFrame:
-        group = QFrame()
-        group.setObjectName("NavGroup")
-        group_layout = QVBoxLayout(group)
-        group_layout.setContentsMargins(0, 0, 0, 0)
-        group_layout.setSpacing(0)
-        for index, (key, label, shortcut) in enumerate(items):
-            if index:
-                group_layout.addWidget(_separator())
-            button = NavButton(label, shortcut)
-            button.clicked.connect(
-                lambda _checked=False, page_key=key: self.pageSelected.emit(page_key)
-            )
-            group_layout.addWidget(button)
-            self._group.addButton(button)
-            self.buttons[key] = button
-        return group
+    def _add_button(self, layout: QVBoxLayout, key: str, label: str, shortcut: str) -> None:
+        button = NavButton(label, shortcut)
+        button.clicked.connect(
+            lambda _checked=False, page_key=key: self.pageSelected.emit(page_key)
+        )
+        layout.addWidget(button)
+        self._group.addButton(button)
+        self.buttons[key] = button
 
     def set_current(self, key: str) -> None:
         button = self.buttons.get(key)

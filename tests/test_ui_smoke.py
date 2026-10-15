@@ -79,6 +79,42 @@ class UiSmokeTest(unittest.TestCase):
         self.window.toggle_sidebar()
         self.assertTrue(self.window.sidebar.isVisibleTo(self.window))
 
+    def test_sidebar_buttons_are_independent_and_centered(self) -> None:
+        """六个导航按钮彼此独立、留有间隙，整组垂直居中，且不再有分组框容器。"""
+        from PySide6.QtWidgets import QFrame, QLabel
+
+        from app.widgets.sidebar import NAV_ITEMS
+
+        sidebar = self.window.sidebar
+        self.window.resize(1400, 900)
+        self.window.show()
+        self.app.processEvents()
+
+        buttons = [sidebar.buttons[key] for key, _label, _shortcut in NAV_ITEMS]
+        self.assertEqual(len(buttons), 6)
+        for above, below in zip(buttons, buttons[1:]):
+            gap = (
+                below.mapTo(sidebar, QPoint(0, 0)).y()
+                - above.mapTo(sidebar, QPoint(0, 0)).y()
+                - above.height()
+            )
+            self.assertGreater(gap, 0, "相邻导航按钮之间应有空隙")
+
+        self.assertEqual(sidebar.findChildren(QFrame, "NavGroup"), [])
+
+        subtitle = sidebar.findChild(QLabel, "SidebarSubtitle")
+        data_button = sidebar.buttons["data"]
+        top = subtitle.mapTo(sidebar, QPoint(0, 0)).y() + subtitle.height()
+        bottom = data_button.mapTo(sidebar, QPoint(0, 0)).y()
+        group_top = buttons[0].mapTo(sidebar, QPoint(0, 0)).y()
+        group_bottom = (
+            buttons[-1].mapTo(sidebar, QPoint(0, 0)).y() + buttons[-1].height()
+        )
+        group_center = (group_top + group_bottom) / 2
+        self.assertLess(
+            abs(group_center - (top + bottom) / 2), 24, "按钮组应落在左栏中间"
+        )
+
     def test_legend_appears_exactly_once_per_page(self) -> None:
         """「少 → 多」图例不重复：热力图页与总览页各只留一个。"""
         from app.widgets.heatmap_calendar import HeatmapLegend
