@@ -24,6 +24,7 @@ from .models import (
     Node,
     NodeType,
     PathStep,
+    Slogan,
     Status,
     today_str,
     now_stamp,
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 JSON_FORMAT = "life-manager-json"
 JSON_FORMAT_VERSION = 1
 FOCUS_LIMIT = 3
+SLOGAN_MAX_LENGTH = 60
 
 
 class ValidationError(RuntimeError):
@@ -174,6 +176,43 @@ class LifeManagerService:
             (FOCUS_LIMIT,),
         ).fetchall()
         return [Node.from_row(row) for row in rows]
+
+    # ============================================================ 左栏标语
+    def current_slogan(self) -> Slogan | None:
+        """当前标语（最新一条）；从来没设置过则为 None。"""
+        row = self.db.conn.execute(
+            "SELECT * FROM slogans ORDER BY created_at DESC, rowid DESC LIMIT 1"
+        ).fetchone()
+        return Slogan.from_row(row) if row else None
+
+    def slogan_history(self) -> list[Slogan]:
+        """全部标语记录，最新的排在最前（第一条就是当前显示的）。"""
+        rows = self.db.conn.execute(
+            "SELECT * FROM slogans ORDER BY created_at DESC, rowid DESC"
+        ).fetchall()
+        return [Slogan.from_row(row) for row in rows]
+
+    def set_slogan(self, text: str) -> Slogan:
+        """改标语：插入一条新记录，旧记录原样留着 —— 历史就是这么来的。
+
+        内容与当前完全相同就不重复记录；传空字符串表示清空标语。
+        """
+        cleaned = (text or "").strip()
+        if len(cleaned) > SLOGAN_MAX_LENGTH:
+            raise ValidationError(f"标语最多 {SLOGAN_MAX_LENGTH} 个字。")
+        current = self.current_slogan()
+        if current is not None and current.text == cleaned:
+            return current
+        slogan_id = new_id()
+        stamp = now_stamp()
+        with self.db.transaction() as tx:
+            tx.execute(
+                "INSERT INTO slogans(id, text, created_at) VALUES(?,?,?)",
+                (slogan_id, cleaned, stamp),
+            )
+        logger.info("更新标语：%s", cleaned or "（已清空）")
+        self._touch()
+        return Slogan(id=slogan_id, text=cleaned, created_at=stamp)
 
     def stats(self) -> dict[str, int]:
         return self.db.counts()

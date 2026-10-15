@@ -109,6 +109,10 @@ def build_demo_service() -> tuple[Database, LifeManagerService]:
     # 演示日记：写两天的内容进同一个 Markdown 文件
     from app import diary as diary_store
 
+    # 演示标语：改过两次，「数据」页面能看到历史
+    service.set_slogan("先把今天过明白")
+    service.set_slogan("一次只推进一件事")
+
     diary_store.write_day(
         today.isoformat(),
         "今天把界面调顺了一些。\n\n晚上出去走了走。",

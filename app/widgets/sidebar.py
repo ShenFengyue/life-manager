@@ -69,10 +69,31 @@ class NavButton(QPushButton):
         )
 
 
+class SloganLabel(QLabel):
+    """左栏顶部的标语：双击就能改，改过的历史都存在数据库里。"""
+
+    editRequested = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("SidebarSlogan")
+        self.setWordWrap(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("双击修改标语；以前的版本在「数据」页面能看到")
+
+    def mouseDoubleClickEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.editRequested.emit()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+
 class Sidebar(QWidget):
     """极简导航：支持整体收起，收起后由顶栏的切换按钮重新展开。"""
 
     pageSelected = Signal(str)
+    sloganEditRequested = Signal()
 
     WIDTH = 248
     BUTTON_GAP = 8
@@ -93,6 +114,12 @@ class Sidebar(QWidget):
         subtitle.setWordWrap(True)
         layout.addWidget(title)
         layout.addWidget(subtitle)
+        layout.addSpacing(10)
+        self._slogan_text = ""
+        self.slogan_label = SloganLabel()
+        self.slogan_label.editRequested.connect(self.sloganEditRequested.emit)
+        layout.addWidget(self.slogan_label)
+        self.set_slogan("")
 
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
@@ -111,6 +138,24 @@ class Sidebar(QWidget):
         self._add_button(layout, data_key, data_label, data_shortcut)
 
         self.set_current("overview")
+
+    # ---------------------------------------------------------------- 标语
+    def set_slogan(self, text: str) -> None:
+        """显示标语；空着的时候给一句灰字提示，不占额外位置。"""
+        text = (text or "").strip()
+        self._slogan_text = text
+        if text:
+            self.slogan_label.setText(text)
+            color = theme.TEXT_MUTED
+        else:
+            self.slogan_label.setText("双击这里写一句标语")
+            color = theme.TEXT_SUBTLE
+        self.slogan_label.setStyleSheet(
+            f"color: {color}; font-size: 12px; background: transparent;"
+        )
+
+    def slogan_text(self) -> str:
+        return self._slogan_text
 
     def _add_button(self, layout: QVBoxLayout, key: str, label: str, shortcut: str) -> None:
         button = NavButton(label, shortcut)

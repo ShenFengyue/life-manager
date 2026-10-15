@@ -14,7 +14,7 @@ from app import heatmap as heatmap_stats  # noqa: E402
 from app import paths, theme  # noqa: E402
 from app.appconfig import AppConfig  # noqa: E402
 from app.main_window import MainWindow  # noqa: E402
-from app.models import NodeType, Status  # noqa: E402
+from app.models import NodeType, Status, today_str  # noqa: E402
 from app.services import LifeManagerService  # noqa: E402
 from app.storage import Database  # noqa: E402
 from app.widgets.heatmap_calendar import HeatmapCalendar  # noqa: E402
@@ -218,6 +218,46 @@ class UiSmokeTest(unittest.TestCase):
         self.assertEqual(
             self.window.quick_capture_shortcut.key(), QKeySequence("Ctrl+N")
         )
+
+    def test_sidebar_shows_slogan_and_hint(self) -> None:
+        """没写过标语时给一句灰字提示；写过之后左栏显示最新那条。"""
+        from app.widgets.sidebar import SloganLabel
+
+        sidebar = self.window.sidebar
+        self.assertIsInstance(sidebar.slogan_label, SloganLabel)
+        self.assertEqual(sidebar.slogan_text(), "")
+        self.assertIn("双击", sidebar.slogan_label.text())
+
+        self.service.set_slogan("一次只推进一件事")
+        self.window.reload_slogan()
+        self.assertEqual(sidebar.slogan_text(), "一次只推进一件事")
+        self.assertEqual(sidebar.slogan_label.text(), "一次只推进一件事")
+
+    def test_slogan_label_double_click_requests_edit(self) -> None:
+        """双击标语会发出编辑请求（真正弹窗的是主窗口，这里只验证控件本身）。"""
+        from PySide6.QtTest import QTest
+
+        from app.widgets.sidebar import SloganLabel
+
+        label = SloganLabel()
+        seen: list[int] = []
+        label.editRequested.connect(lambda: seen.append(1))
+        QTest.mouseDClick(label, Qt.MouseButton.LeftButton)
+        self.assertEqual(len(seen), 1)
+
+    def test_data_page_lists_slogan_history(self) -> None:
+        """数据页按时间倒序列出标语历史，第一条标成当前显示。"""
+        self.service.set_slogan("第一版")
+        self.service.set_slogan("第二版")
+        page = self.window.pages["data"]
+        self.window.set_page("data")
+        self.app.processEvents()
+
+        self.assertEqual(page.slogan_table.rowCount(), 2)
+        newest = page.slogan_table.item(0, 1).text()
+        self.assertIn("第二版", newest)
+        self.assertIn("当前显示", newest)
+        self.assertIn("第一版", page.slogan_table.item(1, 1).text())
 
     def test_focus_cards_keep_manual_order(self) -> None:
         """当前重点可以手动调序，顺序记在界面配置里，数据本身不受影响。"""
@@ -725,7 +765,9 @@ class UiSmokeTest(unittest.TestCase):
 
             def exec(self):
                 self.recorded = self._service.record_activity(
-                    self.kwargs["preset_node_id"], "地图上记的", "2026-10-15"
+                    # 用"今天"而不是写死的日期：这条测试紧接着会断言卡片显示「今日 1」，
+                    # 写死日期的话，一过午夜就会假红。
+                    self.kwargs["preset_node_id"], "地图上记的", today_str()
                 )
                 return 1
 

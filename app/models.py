@@ -21,6 +21,31 @@ def today_str() -> str:
     return clock.today_str()
 
 
+@dataclass(frozen=True)
+class Slogan:
+    """左栏顶部的一条标语。
+
+    每次修改都插入一条新记录，旧的记录原样保留 —— 历史就是这么来的，
+    不需要额外的"版本"概念；当前显示的就是最新那一条。
+    """
+
+    id: str
+    text: str
+    created_at: str
+
+    @property
+    def display_text(self) -> str:
+        return self.text if self.text else "（已清空）"
+
+    @classmethod
+    def from_row(cls, row: Any) -> "Slogan":
+        return cls(
+            id=row["id"],
+            text=row["text"] or "",
+            created_at=row["created_at"],
+        )
+
+
 class NodeType(str, Enum):
     AREA = "area"
     PROCESS = "process"

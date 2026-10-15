@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QPushButton,
@@ -27,8 +28,8 @@ from .pages.heatmaps import HeatmapsPage
 from .pages.mindmap import MindMapPage
 from .pages.overview import OverviewPage
 from .pages.processes import ProcessesPage
-from .services import LifeManagerService
-from .widgets.common import QuickRecordDialog
+from .services import SLOGAN_MAX_LENGTH, LifeManagerService, ValidationError
+from .widgets.common import QuickRecordDialog, warn
 from .widgets.quick_capture import QuickCaptureDialog
 from .widgets.sidebar import ALL_NAV_ITEMS, Sidebar
 from .models import today_str
@@ -76,7 +77,9 @@ class MainWindow(QMainWindow):
 
         self.sidebar = Sidebar()
         self.sidebar.pageSelected.connect(self.set_page)
+        self.sidebar.sloganEditRequested.connect(self._edit_slogan)
         root.addWidget(self.sidebar)
+        self.reload_slogan()
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -231,6 +234,8 @@ class MainWindow(QMainWindow):
                 page.openNodeRequested.connect(self.open_node)
             if hasattr(page, "openPageRequested"):
                 page.openPageRequested.connect(self.set_page)
+            if hasattr(page, "sloganEditRequested"):
+                page.sloganEditRequested.connect(self._edit_slogan)
         activity.openNodeRequested.connect(self.open_node)
 
     def on_data_changed(self) -> None:
@@ -296,6 +301,34 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 f"已记录一次活动：{self.service.path_text(dialog.recorded.node_id)}", 5000
             )
+
+    # ---------------------------------------------------------------- 标语
+    def reload_slogan(self) -> None:
+        """把数据库里最新的标语显示到左栏（没设置过就显示灰字提示）。"""
+        slogan = self.service.current_slogan()
+        self.sidebar.set_slogan(slogan.text if slogan else "")
+
+    def _edit_slogan(self) -> None:
+        """改标语：留空表示清空；每次修改都会留下一条历史（在「数据」页面）。"""
+        current = self.service.current_slogan()
+        text, ok = QInputDialog.getMultiLineText(
+            self,
+            "修改标语",
+            f"左栏顶部显示的一句话（最多 {SLOGAN_MAX_LENGTH} 字；留空则不显示）：",
+            current.text if current else "",
+        )
+        if not ok:
+            return
+        try:
+            self.service.set_slogan(text)
+        except ValidationError as exc:
+            warn(self, "无法保存标语", str(exc))
+            return
+        self.reload_slogan()
+        self.on_data_changed()
+        self.statusBar().showMessage(
+            "标语已更新；以前的版本在「数据」页面能看到", 5000
+        )
 
     def quick_capture(self) -> None:
         """Ctrl+N：一个输入框，先匹配节点，再写备注，两次回车完成。"""

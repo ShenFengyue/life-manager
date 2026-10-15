@@ -12,6 +12,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QFileDialog,
     QHBoxLayout,
@@ -33,6 +34,7 @@ from ..widgets.common import Card, Muted, SectionHeader, Subtle, confirm, info, 
 
 class DataPage(QWidget):
     changed = Signal()
+    sloganEditRequested = Signal()
 
     def __init__(
         self,
@@ -57,12 +59,50 @@ class DataPage(QWidget):
         layout.setSpacing(14)
 
         layout.addWidget(self._build_location_card())
+        layout.addWidget(self._build_slogan_card())
         layout.addWidget(self._build_backup_card())
         layout.addWidget(self._build_transfer_card())
         layout.addWidget(self._build_integrity_card())
         layout.addWidget(self._build_window_card())
         layout.addStretch(1)
         self.refresh()
+
+    # ------------------------------------------------------------ 标语历史
+    def _build_slogan_card(self) -> QWidget:
+        card = Card()
+        header = QHBoxLayout()
+        header.addWidget(SectionHeader("标语历史"))
+        header.addStretch(1)
+        edit = QPushButton("修改当前标语")
+        edit.clicked.connect(self.sloganEditRequested.emit)
+        header.addWidget(edit)
+        card.body.addLayout(header)
+        card.body.addWidget(
+            Muted(
+                "左栏顶部那句标语，每改一次就留一条记录；最新一条就是当前显示的"
+                "（也可以直接在左栏双击标语来改）。"
+            )
+        )
+        self.slogan_table = QTableWidget(0, 2)
+        self.slogan_table.setHorizontalHeaderLabels(("修改时间", "标语"))
+        self.slogan_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.slogan_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.slogan_table.verticalHeader().setVisible(False)
+        self.slogan_table.setColumnWidth(0, 170)
+        self.slogan_table.horizontalHeader().setStretchLastSection(True)
+        self.slogan_table.setMinimumHeight(170)
+        card.body.addWidget(self.slogan_table)
+        return card
+
+    def _reload_slogans(self) -> None:
+        records = self.service.slogan_history()
+        self.slogan_table.setRowCount(len(records))
+        for row, slogan in enumerate(records):
+            self.slogan_table.setItem(row, 0, QTableWidgetItem(slogan.created_at))
+            text = slogan.display_text + ("　← 当前显示" if row == 0 else "")
+            self.slogan_table.setItem(row, 1, QTableWidgetItem(text))
 
     # ---------------------------------------------------------------- 窗口
     def _build_window_card(self) -> QWidget:
@@ -367,3 +407,4 @@ class DataPage(QWidget):
     def refresh(self) -> None:
         self._reload_backups()
         self._run_integrity()
+        self._reload_slogans()

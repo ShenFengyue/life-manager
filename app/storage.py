@@ -19,7 +19,7 @@ from .models import NodeType, PathStep, Status, now_stamp
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA_STATEMENTS = (
     """
@@ -80,6 +80,14 @@ SCHEMA_STATEMENTS = (
         note         TEXT NOT NULL DEFAULT ''
     )
     """,
+    # 左栏标语：每改一次插入一条，旧的原样留着，等于自带历史。
+    """
+    CREATE TABLE IF NOT EXISTS slogans (
+        id         TEXT PRIMARY KEY,
+        text       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id, position)",
     "CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type)",
     "CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(activity_date)",
@@ -99,6 +107,15 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
         "ALTER TABLE nodes ADD COLUMN deleted_group TEXT",
     ),
     3: ("ALTER TABLE nodes ADD COLUMN description TEXT NOT NULL DEFAULT ''",),
+    4: (
+        """
+        CREATE TABLE IF NOT EXISTS slogans (
+            id         TEXT PRIMARY KEY,
+            text       TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+    ),
 }
 
 # 初始分类：必须与用户提供的树完全一致，不擅自重命名或重新归类。
