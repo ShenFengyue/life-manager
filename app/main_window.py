@@ -78,6 +78,9 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar()
         self.sidebar.pageSelected.connect(self.set_page)
         self.sidebar.sloganEditRequested.connect(self._edit_slogan)
+        self.sidebar.themeRequested.connect(self.switch_theme)
+        # 切换主题时置为 True，main.py 的循环据此重建整个窗口
+        self.restart_requested = False
         root.addWidget(self.sidebar)
         self.reload_slogan()
 
@@ -303,6 +306,25 @@ class MainWindow(QMainWindow):
             )
 
     # ---------------------------------------------------------------- 标语
+    def switch_theme(self, name: str) -> None:
+        """切换配色。
+
+        配色切换靠"重建整个窗口"完成：所有控件都会用新配色重新创建一次，
+        那些在 Python 里拼字符串设样式的地方也就不需要单独处理。
+        重建前先把日记草稿落盘，避免丢掉没点保存的内容。
+        """
+        name = theme.normalize(name)
+        if name == theme.current_theme():
+            return
+        diary_page = self.pages.get("diary")
+        if diary_page is not None and hasattr(diary_page, "flush"):
+            diary_page.flush()
+        self.config.set("theme", name)
+        self.config.save()
+        self.restart_requested = True
+        # 关掉窗口：closeEvent 会把窗口位置与大小存进配置，新窗口启动时原样恢复
+        self.close()
+
     def reload_slogan(self) -> None:
         """把数据库里最新的标语显示到左栏（没设置过就显示灰字提示）。"""
         slogan = self.service.current_slogan()

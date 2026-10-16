@@ -162,7 +162,8 @@ class HeatmapCalendar(QWidget):
             )
 
         # 方格
-        empty_border = QPen(QColor(heatmap_stats.EMPTY_CELL_BORDER))
+        # 空格描边也用主题色（深色下它与空格填充同色，等于不描边，不会画出一片网格）
+        empty_border = QPen(QColor(theme.EMPTY_CELL_BORDER))
         empty_border.setWidthF(0.8)
         for column, days in enumerate(self._grid.columns):
             for row, day in enumerate(days):

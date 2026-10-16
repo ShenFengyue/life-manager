@@ -193,6 +193,10 @@ class DiaryPage(QWidget):
         self.status_label.setText(message)
 
     # ---------------------------------------------------------------- 操作
+    def flush(self) -> None:
+        """把当前编辑框的内容立即写盘（切换主题重建界面之前会调用）。"""
+        self._save(silent=True)
+
     def _save(self, *, silent: bool) -> None:
         day = self._current_day
         body = self.editor.toPlainText()

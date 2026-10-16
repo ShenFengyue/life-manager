@@ -10,6 +10,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -94,6 +95,7 @@ class Sidebar(QWidget):
 
     pageSelected = Signal(str)
     sloganEditRequested = Signal()
+    themeRequested = Signal(str)
 
     WIDTH = 248
     BUTTON_GAP = 8
@@ -138,7 +140,33 @@ class Sidebar(QWidget):
         data_key, data_label, data_shortcut = BOTTOM_ITEMS[0]
         self._add_button(layout, data_key, data_label, data_shortcut)
 
+        # 最底下：配色切换（两个小段，选中的那个是当前主题）
+        layout.addSpacing(10)
+        segment = QFrame()
+        segment.setObjectName("ThemeSeg")
+        segment_layout = QHBoxLayout(segment)
+        segment_layout.setContentsMargins(3, 3, 3, 3)
+        segment_layout.setSpacing(3)
+        self.theme_buttons: dict[str, QPushButton] = {}
+        for key in ("light", "dark"):
+            button = QPushButton(theme.THEME_LABELS[key])
+            button.setObjectName("ThemeButton")
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(
+                lambda _checked=False, name=key: self.themeRequested.emit(name)
+            )
+            segment_layout.addWidget(button)
+            self.theme_buttons[key] = button
+        layout.addWidget(segment)
+        self.set_theme(theme.current_theme())
+
         self.set_current("overview")
+
+    def set_theme(self, name: str) -> None:
+        """把当前主题那一小段标成选中。"""
+        for key, button in self.theme_buttons.items():
+            button.setChecked(key == name)
 
     # ---------------------------------------------------------------- 标语
     def set_slogan(self, text: str) -> None:

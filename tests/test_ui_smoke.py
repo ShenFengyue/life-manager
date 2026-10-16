@@ -2374,6 +2374,43 @@ class UiSmokeTest(unittest.TestCase):
         self.assertIsNotNone(moved_up)
         self.assertFalse(QRect(moved_up, low_frame.size()).contains(low_pointer))
 
+    def test_theme_switch_changes_colors_and_can_go_back(self) -> None:
+        """切主题会换掉配色；切回来必须完全复原（浅色不能被改坏）。"""
+        from app import theme
+
+        self.addCleanup(theme.apply_theme, theme.current_theme())
+        before = (theme.PAGE_BG, theme.TEXT, theme.LEVEL_COLORS[0])
+
+        theme.apply_theme("dark")
+        self.assertEqual(theme.current_theme(), "dark")
+        self.assertNotEqual(theme.PAGE_BG, before[0])
+        self.assertIn(f"background: {theme.PAGE_BG}", theme.stylesheet())
+        self.assertNotIn(f"background: {before[0]}", theme.stylesheet())
+
+        theme.apply_theme("light")
+        self.assertEqual((theme.PAGE_BG, theme.TEXT, theme.LEVEL_COLORS[0]), before)
+
+    def test_unknown_theme_name_falls_back_to_light(self) -> None:
+        from app import theme
+
+        self.addCleanup(theme.apply_theme, theme.current_theme())
+        theme.apply_theme("深色")
+        self.assertEqual(theme.current_theme(), "light")
+
+    def test_switching_theme_from_sidebar_saves_config(self) -> None:
+        """侧栏切主题：写进配置并请求重建窗口（重建由 main.py 的循环完成）。"""
+        self.window.sidebar.themeRequested.emit("dark")
+        self.app.processEvents()
+        self.assertEqual(self.config.get("theme"), "dark")
+        self.assertTrue(self.window.restart_requested)
+
+    def test_sidebar_has_theme_segment(self) -> None:
+        from app import theme
+
+        sidebar = self.window.sidebar
+        self.assertEqual(set(sidebar.theme_buttons), {"light", "dark"})
+        self.assertTrue(sidebar.theme_buttons[theme.current_theme()].isChecked())
+
 
 if __name__ == "__main__":
     unittest.main()

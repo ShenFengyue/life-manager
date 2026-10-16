@@ -129,7 +129,7 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    app.setPalette(theme.light_palette())
+    app.setPalette(theme.palette())
     app.setFont(theme.app_font())
     app.setStyleSheet(theme.stylesheet())
     if not QFontDatabase.families():
@@ -226,6 +226,23 @@ def main() -> int:
     _settle(app)
     detail.grab().save(str(OUTPUT_DIR / "heatmap-detail.png"))
     print(f"已渲染 heatmap-detail → {OUTPUT_DIR / 'heatmap-detail.png'}")
+
+    # 深色模式：换一套配色、用新配色重建窗口，把主要页面再抓一遍，方便逐页核对显示问题
+    theme.apply_theme("dark")
+    app.setPalette(theme.palette())
+    app.setStyleSheet(theme.stylesheet())
+    light_window = window
+    window = MainWindow(service, config)
+    window.resize(1560, 980)
+    window.show()
+    _settle(app)
+    for key in ("overview", "heatmaps", "processes", "mindmap", "diary", "data"):
+        window.set_page(key)
+        _settle(app)
+        target = OUTPUT_DIR / f"dark-{key}.png"
+        window.grab().save(str(target))
+        print(f"已渲染 dark-{key} → {target}")
+    light_window.close()
 
     db.close()
     return 0

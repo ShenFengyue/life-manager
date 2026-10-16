@@ -112,11 +112,12 @@ def main() -> int:
     app.setApplicationDisplayName("Life Manager")
     app.setWindowIcon(theme.app_icon())
     app.setStyle("Fusion")
-    app.setPalette(theme.light_palette())
     app.setFont(theme.app_font())
-    app.setStyleSheet(theme.stylesheet())
 
     config = AppConfig()
+    theme.apply_theme(str(config.get("theme")))
+    app.setPalette(theme.palette())
+    app.setStyleSheet(theme.stylesheet())
     db = Database()
     service: LifeManagerService | None = None
     try:
@@ -140,9 +141,19 @@ def main() -> int:
         QMessageBox.critical(None, "启动失败", f"应用无法启动：\n{exc}")
         return 2
 
-    window = MainWindow(service, config)
-    window.show()
-    code = app.exec()
+    # 主题切换后主窗口会请求重建：这里循环一次，用新配色把所有控件重新创建一遍。
+    # 这样"在代码里拼字符串设样式"的地方也会拿到新颜色，不会留下旧配色的角落。
+    code = 0
+    while True:
+        theme.apply_theme(str(config.get("theme")))
+        app.setPalette(theme.palette())
+        app.setStyleSheet(theme.stylesheet())
+        window = MainWindow(service, config)
+        window.show()
+        code = app.exec()
+        if not window.restart_requested:
+            break
+        logger.info("按新主题重建界面")
     db.close()
     logger.info("Life Manager 退出")
     return code

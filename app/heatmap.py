@@ -26,6 +26,8 @@ LEVEL_COLORS: tuple[str, ...] = (
     "#30a14e",
     "#216e39",
 )
+# 注意：绘制的颜色以 app/theme.py 为准（它随深浅色切换）；
+# 这里保留同名常量只是为了兼容历史引用，不要用它去画界面。
 EMPTY_CELL_BORDER = "#d8dee4"
 
 
