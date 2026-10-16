@@ -2224,6 +2224,37 @@ class UiSmokeTest(unittest.TestCase):
         )
         self.assertIn("线程那天的记录", cells)
 
+    def test_confirm_defaults_to_cancel_for_dangerous_actions(self) -> None:
+        """危险确认框的默认按钮必须是「取消」：打开时焦点不能落在「确定」上，
+        否则顺手一个回车就把东西删了。"""
+        from PySide6.QtWidgets import QMessageBox
+
+        from app.widgets import common as common_module
+
+        seen: list[tuple[str, str]] = []
+        original = QMessageBox.exec
+
+        def fake_exec(self):
+            default = self.defaultButton()
+            escape = self.escapeButton()
+            seen.append(
+                (
+                    default.text() if default is not None else "",
+                    escape.text() if escape is not None else "",
+                )
+            )
+            return 0
+
+        QMessageBox.exec = fake_exec
+        try:
+            common_module.confirm(self.window, "删除", "确定要删除吗？", danger=True)
+            common_module.confirm(self.window, "继续", "要继续吗？")
+        finally:
+            QMessageBox.exec = original
+
+        self.assertEqual(seen[0], ("取消", "取消"), "危险操作应该默认到「取消」")
+        self.assertEqual(seen[1], ("确定", "取消"), "普通确认框仍然是「确定」")
+
 
 if __name__ == "__main__":
     unittest.main()

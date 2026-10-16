@@ -985,12 +985,19 @@ def run_delete_node(service: LifeManagerService, parent: QWidget, node: Node) ->
 
 
 def confirm(parent: QWidget, title: str, text: str, *, danger: bool = False) -> bool:
+    """确认框。
+
+    `danger=True`（删除这类不可撤销的操作）时，**默认按钮是「取消」** ——
+    打开窗口时焦点不会落在「确定」上，免得顺手一个回车就把东西删了。
+    """
     box = QMessageBox(parent)
     box.setWindowTitle(title)
     box.setText(text)
     box.setIcon(QMessageBox.Icon.Warning if danger else QMessageBox.Icon.Question)
     yes = box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
-    box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+    cancel = box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(cancel if danger else yes)
+    box.setEscapeButton(cancel)
     box.exec()
     return box.clickedButton() is yes
 
