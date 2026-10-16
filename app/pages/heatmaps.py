@@ -1,8 +1,9 @@
 """页面 C：热力图 Heatmaps。
 
-一行一个节点：左边是领域色条 + 名字 + 一句统计，右边是这张节点的迷你热力图。
+一行一个节点：左边是领域色条 + 名字 + 一句统计，右边是这张节点的热力图。
 点这一行打开**全屏大图**；在大图里点某一天的色块，就能看到那天的全部活动记录。
-所有热力图都按活动发生时的归属快照统计（关联不参与统计，Thread 不单独出图）。
+所有热力图都按活动发生时的归属快照统计（关联不参与统计）。
+领域 → 进程 → 线程 三层：**线程默认收起**，只能点进程左边的三角展开。
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ ROW_CALENDAR_SCALE = 1.0
 AREA_ROW_HEIGHT = 130
 PROCESS_ROW_HEIGHT = 124
 PROCESS_INDENT = 24  # 进程行相对领域行的缩进
+THREAD_INDENT = 24  # 线程行再往里缩一层
 LABEL_WIDTH = 240  # 名字与统计那一列的固定宽度，保证热力图左边缘对齐
 AREA_GAP = 14  # 领域之间的留白
 DETAIL_SCALE_MIN = 1.2
@@ -73,6 +75,11 @@ def scope_data(service: LifeManagerService, scope_kind: str, scope_id: str, grid
         return (
             heatmap_stats.counts_for_area(conn, scope_id, grid.date_from, grid.date_to),
             heatmap_stats.summaries(conn, "area_id", scope_id, grid.date_from, grid.date_to),
+        )
+    if scope_kind == "thread":
+        return (
+            heatmap_stats.counts_for_thread(conn, scope_id, grid.date_from, grid.date_to),
+            heatmap_stats.summaries(conn, "thread_id", scope_id, grid.date_from, grid.date_to),
         )
     return (
         heatmap_stats.counts_for_process(conn, scope_id, grid.date_from, grid.date_to),
@@ -129,6 +136,7 @@ class HeatmapRow(QFrame):
         color: str,
         on_changed=None,
         parent: QWidget | None = None,
+        has_children: bool = False,
     ) -> None:
         super().__init__(parent)
         self.service = service
@@ -137,6 +145,7 @@ class HeatmapRow(QFrame):
         self.scope_kind = scope_kind
         self.on_changed = on_changed
         self._is_area = scope_kind == "area"
+        self._is_thread = scope_kind == "thread"
         self._note = ""
         self._total = 0
         self._active_days = 0
@@ -149,16 +158,21 @@ class HeatmapRow(QFrame):
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
-        row.addSpacing(0 if self._is_area else PROCESS_INDENT)
+        row.addSpacing(self._indent())
 
-        # 折叠三角：只有领域行用到，进程行留同样宽度占位，保证两列对齐
+        # 折叠三角：领域行折叠它下面的进程；进程行折叠它下面的线程。
+        # 没有下一级的行不显示（但留出同样宽度占位，保证各列对齐）。
         self.toggle_button = QPushButton("▼")
         self.toggle_button.setObjectName("RowToggle")
         self.toggle_button.setFixedSize(22, 22)
         self.toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.toggle_button.setToolTip("折叠 / 展开这个领域下的进程")
+        self.toggle_button.setToolTip(
+            "折叠 / 展开这个领域下的进程"
+            if self._is_area
+            else "折叠 / 展开这个进程下的线程"
+        )
         self.toggle_button.clicked.connect(self.toggleRequested.emit)
-        self.toggle_button.setVisible(self._is_area)
+        self.toggle_button.setVisible(has_children)
         row.addWidget(self.toggle_button, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addSpacing(6)
 
@@ -209,6 +223,14 @@ class HeatmapRow(QFrame):
         row.addStretch(1)
 
     # ---------------------------------------------------------------- 数据
+    def _indent(self) -> int:
+        """层级缩进：领域 0 / 进程 24 / 线程 48。"""
+        if self._is_area:
+            return 0
+        if self._is_thread:
+            return PROCESS_INDENT + THREAD_INDENT
+        return PROCESS_INDENT
+
     def apply_window(self, grid) -> None:
         """按当前日历窗口刷新这张迷你热力图与统计文字。"""
         self.calendar.set_window(grid)
@@ -290,6 +312,8 @@ class HeatmapDetailDialog(QDialog):
         header.addWidget(title)
         if scope_kind == "area":
             header.addWidget(Subtle("领域：含其下全部进程与线程"))
+        elif scope_kind == "thread":
+            header.addWidget(Subtle("只含记在这个线程上的活动"))
         header.addStretch(1)
         header.addWidget(HeatmapLegend())
         layout.addLayout(header)
@@ -451,8 +475,11 @@ class HeatmapsPage(QWidget):
         self._area_rows: dict[str, HeatmapRow] = {}
         self._process_rows: dict[str, HeatmapRow] = {}
         self._rows_by_area: dict[str, list[HeatmapRow]] = {}
+        self._thread_rows: dict[str, list[HeatmapRow]] = {}
         self._deleted_rows: dict[str, HeatmapRow] = {}
         self._collapsed_areas: set[str] = set()
+        # 哪些进程被手动展开了线程热力图（线程默认收起，连"全部展开"也不动它）
+        self._expanded_processes: set[str] = set()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 18)
@@ -516,6 +543,7 @@ class HeatmapsPage(QWidget):
         self._refresh_data()
 
     def _set_all_expanded(self, expanded: bool) -> None:
+        """只管领域这一层：线程热力图必须手动点进程的三角才展开，这里不碰它。"""
         self._collapsed_areas = set() if expanded else set(self._rows_by_area)
         self._apply_collapsed()
 
@@ -526,21 +554,44 @@ class HeatmapsPage(QWidget):
             self._collapsed_areas.add(area_id)
         self._apply_collapsed()
 
+    def _toggle_process(self, process_id: str) -> None:
+        """展开 / 收起这个进程下面的线程热力图。"""
+        if process_id in self._expanded_processes:
+            self._expanded_processes.discard(process_id)
+        else:
+            self._expanded_processes.add(process_id)
+        self._apply_collapsed()
+
     def _apply_collapsed(self) -> None:
-        for area_id, rows in self._rows_by_area.items():
-            collapsed = area_id in self._collapsed_areas
-            for row in rows:
-                row.setVisible(not collapsed)
+        for area_id, process_rows in self._rows_by_area.items():
+            area_collapsed = area_id in self._collapsed_areas
+            for row in process_rows:
+                row.setVisible(not area_collapsed)
+                expanded = row.node_id in self._expanded_processes
+                row.set_expanded_arrow(expanded)
+                # 线程行只有在"领域没折叠 + 这个进程被手动展开"时才出现
+                show_threads = (not area_collapsed) and expanded
+                for thread_row in self._thread_rows.get(row.node_id, []):
+                    thread_row.setVisible(show_threads)
             area_row = self._area_rows.get(area_id)
             if area_row is not None:
-                area_row.set_expanded_arrow(not collapsed)
+                area_row.set_expanded_arrow(not area_collapsed)
 
     # ---------------------------------------------------------------- 结构
     def _structure_signature(self) -> tuple:
         signature = []
         for area in self.service.areas():
             processes = tuple(
-                (process.id, process.name) for process in self.service.processes(area.id)
+                (
+                    process.id,
+                    process.name,
+                    # 线程也要进签名：不然新建/改名/删掉一个线程，这一页不会重建
+                    tuple(
+                        (thread.id, thread.name)
+                        for thread in self.service.threads(process.id)
+                    ),
+                )
+                for process in self.service.processes(area.id)
             )
             signature.append((area.id, area.name, processes))
         deleted = tuple(
@@ -575,7 +626,12 @@ class HeatmapsPage(QWidget):
             first = False
 
             area_row = HeatmapRow(
-                self.service, area, "area", color, on_changed=self._on_activities_changed
+                self.service,
+                area,
+                "area",
+                color,
+                on_changed=self._on_activities_changed,
+                has_children=bool(self.service.processes(area.id)),
             )
             area_row.openRequested.connect(
                 lambda area_id=area.id: self._open_detail("area", area_id)
@@ -589,15 +645,20 @@ class HeatmapsPage(QWidget):
 
             rows: list[HeatmapRow] = []
             for process in self.service.processes(area.id):
+                threads = self.service.threads(process.id)
                 row = HeatmapRow(
                     self.service,
                     process,
                     "process",
                     color,
                     on_changed=self._on_activities_changed,
+                    has_children=bool(threads),
                 )
                 row.openRequested.connect(
                     lambda process_id=process.id: self._open_detail("process", process_id)
+                )
+                row.toggleRequested.connect(
+                    lambda process_id=process.id: self._toggle_process(process_id)
                 )
                 row.noteRequested.connect(
                     lambda process_id=process.id: self._edit_process_note(process_id)
@@ -606,13 +667,32 @@ class HeatmapsPage(QWidget):
                 self._rows[process.id] = row
                 self._process_rows[process.id] = row
                 rows.append(row)
+
+                # 线程行：建好但默认隐藏，只有点进程的三角才显示
+                thread_rows: list[HeatmapRow] = []
+                for thread in threads:
+                    thread_row = HeatmapRow(
+                        self.service,
+                        thread,
+                        "thread",
+                        color,
+                        on_changed=self._on_activities_changed,
+                    )
+                    thread_row.openRequested.connect(
+                        lambda thread_id=thread.id: self._open_detail("thread", thread_id)
+                    )
+                    thread_row.setVisible(False)
+                    self.container_layout.addWidget(thread_row)
+                    self._rows[thread.id] = thread_row
+                    thread_rows.append(thread_row)
+                self._thread_rows[process.id] = thread_rows
             self._rows_by_area[area.id] = rows
 
         self._append_deleted_rows()
 
         note = Muted(
-            "Thread 不单独生成热力图：它的活动按发生时的主要归属汇总到对应 Process 与 Area，"
-            "线程详情里仍可查看自己的完整活动记录。点任意一行可以打开全屏大图。"
+            "线程热力图统计的是「当时就记在这个线程上」的活动；记在进程上的活动只进进程与领域的热力图。"
+            "线程默认收起，点进程左边的三角才展开（「全部展开」不会动它）。点任意一行可以打开全屏大图。"
         )
         self.container_layout.addSpacing(AREA_GAP)
         self.container_layout.addWidget(note)

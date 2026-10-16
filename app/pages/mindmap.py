@@ -93,7 +93,7 @@ class MindMapPage(QWidget):
     def _build_hint(self) -> QWidget:
         return Subtle(
             "单击卡片 = 记录一次；右键单击卡片 = 改名 / 新建 / 移动 / 置顶 / 归档 / 删除；"
-            "中键单击卡片 = 看它的大热力图（线程会打开它所属的进程）；"
+            "中键单击卡片 = 看它自己的大热力图；"
             "按住右键（或空白处左键）拖动 = 自由移动画布；Ctrl+滚轮缩放。"
         )
 
@@ -191,7 +191,7 @@ class MindMapPage(QWidget):
             note = latest[1] or "（无备注）"
             lines.append(f"最近：{latest[0]} {note}")
         lines.append("左键单击 = 记录一次；右键 = 改名 / 新建 / 移动 / 归档 / 删除")
-        lines.append("中键单击 = 看它的大热力图（线程打开所属进程的）")
+        lines.append("中键单击 = 看它自己的大热力图")
         return CardData(
             node_id=node.id,
             title=node.name,
@@ -257,33 +257,23 @@ class MindMapPage(QWidget):
             self.changed.emit()
 
     def open_heatmap_for_node(self, node_id: str) -> None:
-        """中键单击卡片：打开它的大热力图。
+        """中键单击卡片：打开它自己的大热力图。
 
-        线程没有自己的热力图（规格：Thread 不单独出图），所以打开它所属进程的；
-        领域打开的就是领域自己那张（含其下全部进程与线程）。
+        领域 = 含其下全部进程与线程；进程 = 它自己；线程 = 它自己
+        （线程那张只统计「当时记在这个线程上」的活动）。
         """
         node = self.service.get_node(node_id)
         if node is None:
             return
-        scope_node = node
-        scope_kind = "area"
-        if node.type is NodeType.PROCESS:
+        if node.type is NodeType.AREA:
+            scope_kind = "area"
+        elif node.type is NodeType.PROCESS:
             scope_kind = "process"
-        elif node.type is NodeType.THREAD:
-            parent = self.service.get_node(node.parent_id) if node.parent_id else None
-            if parent is None:
-                self._status(f"{node.name} 还没有归属进程，暂时没有可看的热力图")
-                return
-            scope_node = parent
-            scope_kind = "process"
-
-        if scope_node.id != node.id:
-            self._status(
-                f"线程没有单独的热力图，打开的是它所属的「{scope_node.name}」", 6000
-            )
+        else:
+            scope_kind = "thread"
         dialog = HeatmapDetailDialog(
             self.service,
-            scope_node,
+            node,
             scope_kind,
             clock.today(),
             on_changed=self.changed.emit,

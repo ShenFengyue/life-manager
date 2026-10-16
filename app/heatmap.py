@@ -99,6 +99,20 @@ def counts_for_process(
     return _counts(conn, "process_id", process_id, date_from, date_to)
 
 
+def counts_for_thread(
+    conn: sqlite3.Connection,
+    thread_id: str,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, int]:
+    """Thread 热力图：只统计「当时就记在这个线程上」的活动。
+
+    记在进程上的活动（记录时没有选具体线程）不会出现在线程热力图里 ——
+    它们本来就不属于任何线程，只归属到进程与领域。
+    """
+    return _counts(conn, "thread_id", thread_id, date_from, date_to)
+
+
 def summaries(
     conn: sqlite3.Connection,
     column: str,

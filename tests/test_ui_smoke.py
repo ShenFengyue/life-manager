@@ -1936,12 +1936,9 @@ class UiSmokeTest(unittest.TestCase):
             opened,
             [
                 ("process", explore.id),
-                ("process", explore.id),  # 线程没有自己的热力图，开所属进程的
+                ("thread", thread.id),  # 线程现在有自己的热力图了
                 ("area", area.id),
             ],
-        )
-        self.assertIn(
-            "线程没有单独的热力图", self.window.statusBar().currentMessage()
         )
 
     def test_left_click_still_records_after_middle_click_support(self) -> None:
@@ -1967,6 +1964,86 @@ class UiSmokeTest(unittest.TestCase):
         finally:
             mindmap_module.QuickRecordDialog = original
         self.assertEqual(calls, ["opened"])
+
+    def test_thread_heatmap_rows_stay_collapsed(self) -> None:
+        """线程热力图默认收起；「全部展开」也不展开它 —— 只能点进程的三角。"""
+        page = self._heatmap_page()
+        area_id = self.service.areas()[0].id
+        process = next(
+            candidate
+            for candidate in self.service.processes(area_id)
+            if self.service.threads(candidate.id)
+        )
+        thread = self.service.threads(process.id)[0]
+        thread_row = page._rows[thread.id]
+        self.assertFalse(thread_row.isVisibleTo(page), "线程行默认应该是收起的")
+
+        page._set_all_expanded(True)
+        self.assertTrue(page._process_rows[process.id].isVisibleTo(page))
+        self.assertFalse(
+            thread_row.isVisibleTo(page), "「全部展开」不应该展开线程热力图"
+        )
+
+        page._toggle_process(process.id)
+        self.assertTrue(thread_row.isVisibleTo(page), "点进程的三角才应该展开线程")
+        self.assertEqual(page._process_rows[process.id].toggle_button.text(), "▼")
+
+        page._toggle_process(process.id)
+        self.assertFalse(thread_row.isVisibleTo(page))
+        self.assertEqual(page._process_rows[process.id].toggle_button.text(), "▶")
+
+    def test_new_thread_gets_a_heatmap_row(self) -> None:
+        """新建线程之后，热力图页自动多出一行（默认收起）。"""
+        page = self._heatmap_page()
+        area_id = self.service.areas()[0].id
+        process = self.service.processes(area_id)[0]
+        thread = self.service.create_node(NodeType.THREAD, "刚建的线程", process.id)
+
+        self.window.on_data_changed()
+        self.app.processEvents()
+
+        self.assertIn(thread.id, page._rows, "新线程应该自动有热力图行")
+        row = page._rows[thread.id]
+        self.assertFalse(row.isVisibleTo(page), "新线程那行也应该默认收起")
+        page._toggle_process(process.id)
+        self.assertTrue(row.isVisibleTo(page))
+        self.assertEqual(row._name_label.text(), "刚建的线程")
+
+    def test_thread_row_opens_its_own_heatmap(self) -> None:
+        """点线程那一行 → 打开线程自己的大热力图（不再是所属进程的）。"""
+        from PySide6.QtTest import QTest
+
+        from app.pages import heatmaps as heatmaps_module
+
+        page = self._heatmap_page()
+        area_id = self.service.areas()[0].id
+        process = next(
+            candidate
+            for candidate in self.service.processes(area_id)
+            if self.service.threads(candidate.id)
+        )
+        thread = self.service.threads(process.id)[0]
+        page._toggle_process(process.id)
+
+        opened: list[tuple[str, str]] = []
+
+        class FakeDetail:
+            def __init__(self, service, node, scope_kind, end_date, **kwargs):
+                opened.append((scope_kind, node.id))
+
+            def showMaximized(self) -> None:
+                pass
+
+            def exec(self) -> int:
+                return 0
+
+        original = heatmaps_module.HeatmapDetailDialog
+        heatmaps_module.HeatmapDetailDialog = FakeDetail
+        try:
+            QTest.mouseClick(page._rows[thread.id], Qt.MouseButton.LeftButton)
+        finally:
+            heatmaps_module.HeatmapDetailDialog = original
+        self.assertEqual(opened, [("thread", thread.id)])
 
 
 if __name__ == "__main__":

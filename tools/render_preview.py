@@ -172,6 +172,18 @@ def main() -> int:
         window.grab().save(str(OUTPUT_DIR / "data-bottom.png"))
         print(f"已渲染 data-bottom → {OUTPUT_DIR / 'data-bottom.png'}")
 
+    # 热力图页：展开一个有线程的进程，看线程热力图那一行长什么样
+    heatmaps_page = window.pages["heatmaps"]
+    window.set_page("heatmaps")
+    _settle(app)
+    for process_id, thread_rows in heatmaps_page._thread_rows.items():
+        if thread_rows:
+            heatmaps_page._toggle_process(process_id)
+            break
+    _settle(app)
+    window.grab().save(str(OUTPUT_DIR / "heatmaps-threads.png"))
+    print(f"已渲染 heatmaps-threads → {OUTPUT_DIR / 'heatmaps-threads.png'}")
+
     from app.widgets.deleted_nodes import DeletedNodesDialog
 
     dialog = DeletedNodesDialog(service, None)

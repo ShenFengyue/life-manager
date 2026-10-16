@@ -101,9 +101,22 @@ class TestHeatmapRules(ServiceTestCase):
         self.assertEqual(heatmap.color_for(5), "#216e39")
         self.assertEqual(heatmap.color_for(0), "#ebedf0")
 
-    def test_thread_has_no_own_heatmap(self) -> None:
-        """Thread 不单独生成热力图：统计接口只有 Area / Process 作用域。"""
-        self.assertFalse(hasattr(heatmap, "counts_for_thread"))
+    def test_thread_heatmap_counts_only_activities_recorded_on_it(self) -> None:
+        """Thread 热力图：只统计「当时就记在这个线程上」的活动。"""
+        self.assertTrue(hasattr(heatmap, "counts_for_thread"))
+        area = self.service.areas()[0]
+        process = self.service.processes(area.id)[0]
+        thread = self.service.create_node(NodeType.THREAD, "线程-口径测试", process.id)
+        self.service.record_activity(thread.id, "记在线程上", "2026-10-01")
+        self.service.record_activity(process.id, "只记在进程上", "2026-10-01")
+
+        self.assertEqual(
+            heatmap.counts_for_thread(self.db.conn, thread.id), {"2026-10-01": 1}
+        )
+        # 进程那张含它下面线程的活动（记在进程上那一条 + 线程那一条）
+        self.assertEqual(
+            heatmap.counts_for_process(self.db.conn, process.id), {"2026-10-01": 2}
+        )
 
     def test_calendar_grid_shape(self) -> None:
         grid = heatmap.build_calendar(date(2026, 10, 15))
