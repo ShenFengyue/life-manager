@@ -102,6 +102,11 @@ def open_day_dialog(
         loader = lambda: service.list_activities(  # noqa: E731
             area_id=scope_id, date_from=day, date_to=day
         )
+    elif scope_kind == "thread":
+        subtitle = f"{node.name} 线程当天的活动（按发生时的归属快照）"
+        loader = lambda: service.list_activities(  # noqa: E731
+            thread_id=scope_id, date_from=day, date_to=day
+        )
     else:
         subtitle = f"{node.name} 进程当天的活动（按发生时的归属快照）"
         loader = lambda: service.list_activities(  # noqa: E731
@@ -434,6 +439,12 @@ class DayActivityPanel(QWidget):
             self.view.set_loader(
                 lambda: self.service.list_activities(
                     area_id=self.scope_id, date_from=day, date_to=day
+                )
+            )
+        elif self.scope_kind == "thread":
+            self.view.set_loader(
+                lambda: self.service.list_activities(
+                    thread_id=self.scope_id, date_from=day, date_to=day
                 )
             )
         else:

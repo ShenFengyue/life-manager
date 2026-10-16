@@ -2202,6 +2202,28 @@ class UiSmokeTest(unittest.TestCase):
             heatmaps_module.HeatmapDetailDialog = original
         self.assertEqual(opened, [("thread", thread.id)])
 
+    def test_thread_heatmap_day_panel_shows_its_own_activities(self) -> None:
+        """线程热力图的大图里点某一天：面板要列出这个线程当天的记录。
+
+        回归：面板原来只分「领域 / 其它」两个分支，线程被当成进程去查 process_id，
+        于是永远是空的。
+        """
+        from app import clock
+        from app.pages.heatmaps import HeatmapDetailDialog
+
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        self.service.record_activity(english.id, "线程那天的记录", "2026-10-15")
+
+        self._heatmap_page()
+        dialog = HeatmapDetailDialog(self.service, english, "thread", clock.today())
+        dialog._on_day_clicked("2026-10-15")
+        table = dialog.day_panel.view.table
+        self.assertEqual(table.rowCount(), 1, "线程热力图点某天应该显示当天记录")
+        cells = " ".join(
+            table.item(0, column).text() for column in range(table.columnCount())
+        )
+        self.assertIn("线程那天的记录", cells)
+
 
 if __name__ == "__main__":
     unittest.main()
