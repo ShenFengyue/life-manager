@@ -157,6 +157,11 @@ class MindMapCard(QGraphicsObject):
     def mousePressEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
         # 必须显式接受按下事件：QGraphicsItem 的默认实现会忽略它，
         # 那样 Qt 不会把后续的抬起事件继续发给这张卡片，单击就会被吞掉。
+        if event.button() == Qt.MouseButton.MiddleButton:
+            # 中键单击 = 看这个节点的大热力图（线程会打开它所属的进程）
+            self._view.nodeHeatmapRequested.emit(self.data.node_id)
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             self._pressed = True
             event.accept()
@@ -188,6 +193,7 @@ class MindMapView(QGraphicsView):
 
     nodeActivated = Signal(str)
     nodeMenuRequested = Signal(str, QPoint)
+    nodeHeatmapRequested = Signal(str)
 
     MIN_SCALE = 0.35
     MAX_SCALE = 2.2

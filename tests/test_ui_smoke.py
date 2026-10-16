@@ -1891,6 +1891,83 @@ class UiSmokeTest(unittest.TestCase):
         )
         self.assertGreaterEqual(gap, 24, "标语与标题之间应该留出更多空白")
 
+    def test_middle_click_on_card_opens_heatmap(self) -> None:
+        """记录地图：中键单击卡片 → 打开它的大热力图；线程打开所属进程的。"""
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QGraphicsSceneMouseEvent
+
+        from app.pages import mindmap as mindmap_module
+
+        page = self.window.pages["mindmap"]
+        self.window.set_page("mindmap")
+        self.app.processEvents()
+        explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        thread = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        area = self.service.node_by_name("领域 3", NodeType.AREA)
+
+        opened: list[tuple[str, str]] = []
+
+        class FakeDetail:
+            def __init__(self, service, node, scope_kind, end_date, **kwargs):
+                opened.append((scope_kind, node.id))
+
+            def showMaximized(self) -> None:
+                pass
+
+            def exec(self) -> int:
+                return 0
+
+        original = mindmap_module.HeatmapDetailDialog
+        mindmap_module.HeatmapDetailDialog = FakeDetail
+        try:
+            for node in (explore, thread, area):
+                card = page.view._cards.get(node.id)
+                self.assertIsNotNone(card, f"{node.name} 应该有卡片")
+                event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMousePress)
+                event.setButton(Qt.MouseButton.MiddleButton)
+                card.mousePressEvent(event)
+                self.assertTrue(
+                    event.isAccepted(), "卡片要吃掉中键，别让视图去平移画布"
+                )
+        finally:
+            mindmap_module.HeatmapDetailDialog = original
+
+        self.assertEqual(
+            opened,
+            [
+                ("process", explore.id),
+                ("process", explore.id),  # 线程没有自己的热力图，开所属进程的
+                ("area", area.id),
+            ],
+        )
+        self.assertIn(
+            "线程没有单独的热力图", self.window.statusBar().currentMessage()
+        )
+
+    def test_left_click_still_records_after_middle_click_support(self) -> None:
+        """加了中键之后，左键单击卡片仍然是「记录一次」。"""
+        from app.pages import mindmap as mindmap_module
+
+        page = self.window.pages["mindmap"]
+        explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        calls: list[str] = []
+
+        class FakeRecord:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def exec(self) -> int:
+                calls.append("opened")
+                return 0
+
+        original = mindmap_module.QuickRecordDialog
+        mindmap_module.QuickRecordDialog = FakeRecord
+        try:
+            page.record_for_node(explore.id)
+        finally:
+            mindmap_module.QuickRecordDialog = original
+        self.assertEqual(calls, ["opened"])
+
 
 if __name__ == "__main__":
     unittest.main()

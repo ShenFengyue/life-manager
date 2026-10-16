@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import heatmap as heatmap_stats
+from .. import clock, heatmap as heatmap_stats
 from .. import mindmap as mindmap_layout
 from .. import theme
 from ..models import Node, NodeType, Status, today_str
@@ -33,6 +33,7 @@ from ..widgets.common import (
     warn,
 )
 from ..widgets.mindmap_view import CardData, MindMapView
+from .heatmaps import HeatmapDetailDialog
 
 
 class MindMapPage(QWidget):
@@ -53,6 +54,7 @@ class MindMapPage(QWidget):
         self.view = MindMapView()
         self.view.nodeActivated.connect(self.record_for_node)
         self.view.nodeMenuRequested.connect(self._show_node_menu)
+        self.view.nodeHeatmapRequested.connect(self.open_heatmap_for_node)
         layout.addWidget(self.view, 1)
 
         self.today_label = Subtle("")
@@ -91,6 +93,7 @@ class MindMapPage(QWidget):
     def _build_hint(self) -> QWidget:
         return Subtle(
             "单击卡片 = 记录一次；右键单击卡片 = 改名 / 新建 / 移动 / 置顶 / 归档 / 删除；"
+            "中键单击卡片 = 看它的大热力图（线程会打开它所属的进程）；"
             "按住右键（或空白处左键）拖动 = 自由移动画布；Ctrl+滚轮缩放。"
         )
 
@@ -188,6 +191,7 @@ class MindMapPage(QWidget):
             note = latest[1] or "（无备注）"
             lines.append(f"最近：{latest[0]} {note}")
         lines.append("左键单击 = 记录一次；右键 = 改名 / 新建 / 移动 / 归档 / 删除")
+        lines.append("中键单击 = 看它的大热力图（线程打开所属进程的）")
         return CardData(
             node_id=node.id,
             title=node.name,
@@ -238,13 +242,9 @@ class MindMapPage(QWidget):
             return
         if node.type is NodeType.AREA:
             # 领域本身不能记录活动：用状态栏提示，不弹窗打断操作手感。
-            message = "领域本身不能记录活动，请点它右边的进程卡片或线程卡片。"
-            window = self.window()
-            status_bar = window.statusBar() if hasattr(window, "statusBar") else None
-            if status_bar is not None:
-                status_bar.showMessage(f"{node.name}：{message}", 6000)
-            else:  # pragma: no cover - 独立使用该页面时
-                warn(self, "无法记录", message)
+            self._status(
+                f"{node.name}：领域本身不能记录活动，请点它右边的进程卡片或线程卡片。"
+            )
             return
         dialog = QuickRecordDialog(
             self.service,
@@ -255,6 +255,51 @@ class MindMapPage(QWidget):
         )
         if dialog.exec() and dialog.recorded is not None:
             self.changed.emit()
+
+    def open_heatmap_for_node(self, node_id: str) -> None:
+        """中键单击卡片：打开它的大热力图。
+
+        线程没有自己的热力图（规格：Thread 不单独出图），所以打开它所属进程的；
+        领域打开的就是领域自己那张（含其下全部进程与线程）。
+        """
+        node = self.service.get_node(node_id)
+        if node is None:
+            return
+        scope_node = node
+        scope_kind = "area"
+        if node.type is NodeType.PROCESS:
+            scope_kind = "process"
+        elif node.type is NodeType.THREAD:
+            parent = self.service.get_node(node.parent_id) if node.parent_id else None
+            if parent is None:
+                self._status(f"{node.name} 还没有归属进程，暂时没有可看的热力图")
+                return
+            scope_node = parent
+            scope_kind = "process"
+
+        if scope_node.id != node.id:
+            self._status(
+                f"线程没有单独的热力图，打开的是它所属的「{scope_node.name}」", 6000
+            )
+        dialog = HeatmapDetailDialog(
+            self.service,
+            scope_node,
+            scope_kind,
+            clock.today(),
+            on_changed=self.changed.emit,
+            parent=self,
+        )
+        dialog.showMaximized()
+        dialog.exec()
+
+    def _status(self, message: str, timeout: int = 6000) -> None:
+        """往主窗口状态栏写一句提示；独立使用这个页面时退回弹窗。"""
+        window = self.window()
+        status_bar = window.statusBar() if hasattr(window, "statusBar") else None
+        if status_bar is not None:
+            status_bar.showMessage(message, timeout)
+        else:  # pragma: no cover - 独立使用该页面时
+            warn(self, "提示", message)
 
     def _show_node_menu(self, node_id: str, global_pos: QPoint) -> None:
         node = self.service.get_node(node_id)
