@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -158,9 +158,12 @@ class MindMapCard(QGraphicsObject):
         # 必须显式接受按下事件：QGraphicsItem 的默认实现会忽略它，
         # 那样 Qt 不会把后续的抬起事件继续发给这张卡片，单击就会被吞掉。
         if event.button() == Qt.MouseButton.MiddleButton:
-            # 中键单击 = 看这个节点的大热力图（线程会打开它所属的进程）
-            self._view.nodeHeatmapRequested.emit(self.data.node_id)
+            # 中键单击 = 看这个节点的大热力图。
+            # 这里不能直接弹窗口：在事件处理函数里 exec() 会嵌套事件循环、把这次点击的状态卡住，
+            # 手感上就变成"要点两下才开"。推迟到当前事件处理结束之后再弹。
+            node_id = self.data.node_id
             event.accept()
+            QTimer.singleShot(0, lambda: self._view.nodeHeatmapRequested.emit(node_id))
             return
         if event.button() == Qt.MouseButton.LeftButton:
             self._pressed = True
@@ -179,10 +182,16 @@ class MindMapCard(QGraphicsObject):
         super().hoverLeaveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
+        if event.button() == Qt.MouseButton.MiddleButton:
+            # 吃掉中键的抬起，免得它落到画布上被当成"开始平移"
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton and self._pressed:
             self._pressed = False
             if self.contains(event.pos()):
-                self._view.nodeActivated.emit(self.data.node_id)
+                node_id = self.data.node_id
+                # 同理：记录窗口也推迟到事件处理结束后再弹
+                QTimer.singleShot(0, lambda: self._view.nodeActivated.emit(node_id))
             event.accept()
             return
         super().mouseReleaseEvent(event)

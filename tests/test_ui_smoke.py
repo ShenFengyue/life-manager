@@ -1929,6 +1929,9 @@ class UiSmokeTest(unittest.TestCase):
                 self.assertTrue(
                     event.isAccepted(), "卡片要吃掉中键，别让视图去平移画布"
                 )
+            # 弹窗是推迟到事件处理结束后执行的：必须在还原成真控件「之前」跑事件循环，
+            # 否则这里会弹出真的模态窗口，测试就卡死了。
+            self.app.processEvents()
         finally:
             mindmap_module.HeatmapDetailDialog = original
 
@@ -1940,6 +1943,45 @@ class UiSmokeTest(unittest.TestCase):
                 ("area", area.id),
             ],
         )
+
+    def test_middle_click_defers_dialog_until_after_the_event(self) -> None:
+        """中键弹窗必须推迟到事件处理结束后 —— 直接在 press 里 exec() 会卡住这次点击，
+        手感上就变成"要点两下才开"（这是用户实测发现的问题）。"""
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QGraphicsSceneMouseEvent
+
+        from app.pages import mindmap as mindmap_module
+
+        page = self.window.pages["mindmap"]
+        self.window.set_page("mindmap")
+        self.app.processEvents()
+        explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        opened: list[str] = []
+
+        class FakeDetail:
+            def __init__(self, service, node, scope_kind, end_date, **kwargs):
+                opened.append(node.id)
+
+            def showMaximized(self) -> None:
+                pass
+
+            def exec(self) -> int:
+                return 0
+
+        original = mindmap_module.HeatmapDetailDialog
+        mindmap_module.HeatmapDetailDialog = FakeDetail
+        try:
+            card = page.view._cards[explore.id]
+            event = QGraphicsSceneMouseEvent(QEvent.Type.GraphicsSceneMousePress)
+            event.setButton(Qt.MouseButton.MiddleButton)
+            card.mousePressEvent(event)
+            self.assertEqual(
+                opened, [], "不该在处理这次点击的过程中就把窗口弹出来"
+            )
+            self.app.processEvents()
+        finally:
+            mindmap_module.HeatmapDetailDialog = original
+        self.assertEqual(opened, [explore.id], "事件处理结束后应该打开")
 
     def test_left_click_still_records_after_middle_click_support(self) -> None:
         """加了中键之后，左键单击卡片仍然是「记录一次」。"""
