@@ -1983,6 +1983,86 @@ class UiSmokeTest(unittest.TestCase):
             mindmap_module.HeatmapDetailDialog = original
         self.assertEqual(opened, [explore.id], "事件处理结束后应该打开")
 
+    def test_middle_click_through_the_view_opens_heatmap(self) -> None:
+        """真实链路：中键点在卡片上（经过 QGraphicsView 转给图元）应该打开热力图。
+
+        上面那条测试是直接调卡片的 mousePressEvent，绕过了 QGraphicsView ——
+        所以它发现不了"视图把中键自己吃掉"这类问题。这条走完整的真实链路。
+        """
+        from PySide6.QtTest import QTest
+
+        from app.pages import mindmap as mindmap_module
+
+        page = self.window.pages["mindmap"]
+        self.window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.window.show()
+        self.window.set_page("mindmap")
+        self.app.processEvents()
+        explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        view = page.view
+        card = view._cards[explore.id]
+        inside = view.mapFromScene(card.scenePos()) + QPoint(24, 22)
+        self.assertTrue(view.viewport().rect().contains(inside), "卡片应该落在视口内")
+
+        opened: list[str] = []
+
+        class FakeDetail:
+            def __init__(self, service, node, scope_kind, end_date, **kwargs):
+                opened.append(node.id)
+
+            def showMaximized(self) -> None:
+                pass
+
+            def exec(self) -> int:
+                return 0
+
+        original = mindmap_module.HeatmapDetailDialog
+        mindmap_module.HeatmapDetailDialog = FakeDetail
+        try:
+            QTest.mouseClick(view.viewport(), Qt.MouseButton.MiddleButton, pos=inside)
+            self.app.processEvents()
+        finally:
+            mindmap_module.HeatmapDetailDialog = original
+        self.assertEqual(opened, [explore.id], "中键点在卡片上就应该打开热力图")
+
+    def test_middle_click_on_empty_canvas_still_pans(self) -> None:
+        """中键点在空白处仍然是"拖动画布"，不会打开热力图。"""
+        from PySide6.QtTest import QTest
+
+        from app.pages import mindmap as mindmap_module
+
+        page = self.window.pages["mindmap"]
+        self.window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.window.show()
+        self.window.set_page("mindmap")
+        self.app.processEvents()
+        view = page.view
+        empty = QPoint(6, 6)
+        self.assertIsNone(view.card_at(empty), "这个点应该是空白处")
+
+        opened: list[str] = []
+
+        class FakeDetail:
+            def __init__(self, service, node, scope_kind, end_date, **kwargs):
+                opened.append(node.id)
+
+            def showMaximized(self) -> None:
+                pass
+
+            def exec(self) -> int:
+                return 0
+
+        original = mindmap_module.HeatmapDetailDialog
+        mindmap_module.HeatmapDetailDialog = FakeDetail
+        try:
+            QTest.mousePress(view.viewport(), Qt.MouseButton.MiddleButton, pos=empty)
+            self.assertTrue(view._panning, "空白处中键应该开始拖动画布")
+            QTest.mouseRelease(view.viewport(), Qt.MouseButton.MiddleButton, pos=empty)
+            self.app.processEvents()
+        finally:
+            mindmap_module.HeatmapDetailDialog = original
+        self.assertEqual(opened, [])
+
     def test_left_click_still_records_after_middle_click_support(self) -> None:
         """加了中键之后，左键单击卡片仍然是「记录一次」。"""
         from app.pages import mindmap as mindmap_module

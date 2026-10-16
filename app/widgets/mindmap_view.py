@@ -339,6 +339,13 @@ class MindMapView(QGraphicsView):
 
     def mousePressEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
         button = event.button()
+        # 中键落在卡片上 → 交给图元（卡片用它打开大热力图）；
+        # 中键落在空白处才是"拖动画布"。
+        if button == Qt.MouseButton.MiddleButton and self.card_at(
+            event.position().toPoint()
+        ) is not None:
+            super().mousePressEvent(event)
+            return
         if button in (
             Qt.MouseButton.MiddleButton,
             Qt.MouseButton.RightButton,
