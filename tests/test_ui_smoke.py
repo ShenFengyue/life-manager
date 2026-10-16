@@ -2025,8 +2025,8 @@ class UiSmokeTest(unittest.TestCase):
             mindmap_module.HeatmapDetailDialog = original
         self.assertEqual(opened, [explore.id], "中键点在卡片上就应该打开热力图")
 
-    def test_middle_click_on_empty_canvas_still_pans(self) -> None:
-        """中键点在空白处仍然是"拖动画布"，不会打开热力图。"""
+    def test_middle_click_on_empty_canvas_does_nothing(self) -> None:
+        """中键不再用于拖动画布：点在空白处什么也不发生。"""
         from PySide6.QtTest import QTest
 
         from app.pages import mindmap as mindmap_module
@@ -2056,12 +2056,47 @@ class UiSmokeTest(unittest.TestCase):
         mindmap_module.HeatmapDetailDialog = FakeDetail
         try:
             QTest.mousePress(view.viewport(), Qt.MouseButton.MiddleButton, pos=empty)
-            self.assertTrue(view._panning, "空白处中键应该开始拖动画布")
+            self.assertFalse(view._panning, "中键不再是拖动画布")
             QTest.mouseRelease(view.viewport(), Qt.MouseButton.MiddleButton, pos=empty)
             self.app.processEvents()
         finally:
             mindmap_module.HeatmapDetailDialog = original
         self.assertEqual(opened, [])
+
+    def test_right_click_menu_has_open_heatmap(self) -> None:
+        """右键菜单里也有一项「看大热力图…」，点了会打开。"""
+        from app.pages import mindmap as mindmap_module
+
+        page = self.window.pages["mindmap"]
+        self.window.set_page("mindmap")
+        self.app.processEvents()
+        explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        opened: list[tuple[str, str]] = []
+
+        class FakeDetail:
+            def __init__(self, service, node, scope_kind, end_date, **kwargs):
+                opened.append((scope_kind, node.id))
+
+            def showMaximized(self) -> None:
+                pass
+
+            def exec(self) -> int:
+                return 0
+
+        original = mindmap_module.HeatmapDetailDialog
+        mindmap_module.HeatmapDetailDialog = FakeDetail
+        try:
+            menu = page.build_node_menu(explore)
+            labels = [action.text() for action in menu.actions()]
+            self.assertIn("看大热力图…", labels)
+            for action in menu.actions():
+                if action.text() == "看大热力图…":
+                    action.trigger()
+                    break
+            self.app.processEvents()
+        finally:
+            mindmap_module.HeatmapDetailDialog = original
+        self.assertEqual(opened, [("process", explore.id)])
 
     def test_left_click_still_records_after_middle_click_support(self) -> None:
         """加了中键之后，左键单击卡片仍然是「记录一次」。"""

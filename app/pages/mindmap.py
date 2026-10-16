@@ -295,6 +295,10 @@ class MindMapPage(QWidget):
         node = self.service.get_node(node_id)
         if node is None:
             return
+        self.build_node_menu(node).exec(global_pos)
+
+    def build_node_menu(self, node: Node) -> QMenu:
+        """构造卡片的右键菜单（抽出来是为了能单独测它，不用真的弹出来）。"""
         menu = QMenu(self)
 
         def add(label: str, handler) -> None:
@@ -304,6 +308,7 @@ class MindMapPage(QWidget):
 
         if node.type is not NodeType.AREA:
             add("记录一次活动…", lambda: self.record_for_node(node.id))
+        add("看大热力图…", lambda: self.open_heatmap_for_node(node.id))
         add("查看它的活动记录", lambda: self._show_activities(node.id))
         if node.type is not NodeType.AREA:
             add("到进程树查看详情与历史", lambda: self.openNodeRequested.emit(node.id))
@@ -323,7 +328,7 @@ class MindMapPage(QWidget):
                 add("归档", lambda: self._set_status(node, Status.ARCHIVED))
         menu.addSeparator()
         add("删除（移入已删除清单）…", lambda: self._delete(node))
-        menu.exec(global_pos)
+        return menu
 
     def _show_activities(self, node_id: str) -> None:
         node = self.service.require_node(node_id)
