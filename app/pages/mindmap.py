@@ -33,6 +33,7 @@ from ..widgets.common import (
     warn,
 )
 from ..widgets.mindmap_view import CardData, MindMapView
+from ..widgets.common import log_cursor
 from .heatmaps import HeatmapDetailDialog
 
 
@@ -253,6 +254,7 @@ class MindMapPage(QWidget):
             lock_node=True,
             title="记录一次活动",
         )
+        log_cursor("准备弹记录窗（窗口还没显示）")
         if dialog.exec() and dialog.recorded is not None:
             self.changed.emit()
 

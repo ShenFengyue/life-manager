@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from .. import theme
 from ..mindmap import Layout, Placement
+from .common import log_cursor
 
 
 @dataclass(frozen=True)
@@ -191,6 +192,7 @@ class MindMapCard(QGraphicsObject):
             if self.contains(event.pos()):
                 node_id = self.data.node_id
                 # 同理：记录窗口也推迟到事件处理结束后再弹
+                log_cursor("点击卡片")
                 QTimer.singleShot(0, lambda: self._view.nodeActivated.emit(node_id))
             event.accept()
             return

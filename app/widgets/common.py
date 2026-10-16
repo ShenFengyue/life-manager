@@ -56,6 +56,16 @@ class Card(QFrame):
         self.body.setSpacing(8)
 
 
+def log_cursor(tag: str) -> None:
+    """诊断用：记录鼠标指针当前位置。
+
+    定位"开弹窗时指针像自己跳到按钮上"这类问题时，会在几个关键点各记一次，
+    对比三段坐标就能知道到底是谁、在哪一步动了指针。
+    """
+    position = QCursor.pos()
+    logger.info("[鼠标] %s → (%d,%d)", tag, position.x(), position.y())
+
+
 class AppDialog(QDialog):
     """项目里所有自定义对话框的基类。
 
@@ -93,7 +103,15 @@ class AppDialog(QDialog):
             self.width(),
             self.height(),
         )
-        avoid_pointer_overlap(self)
+        # 挪开要等 Qt 把窗口真正定位完再动手，否则会被它随后的定位覆盖掉
+        # （这正是上一版"躲开鼠标"没有生效的原因）。
+        # 定时器挂在对话框自己身上：窗口销毁时定时器一起销毁，
+        # 不会在关闭之后还去访问已经释放的对象。
+        for delay in (0, 120):
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda: avoid_pointer_overlap(self))
+            timer.start(delay)
 
 
 def shifted_away_from_pointer(
