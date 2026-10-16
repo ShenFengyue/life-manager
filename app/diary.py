@@ -281,6 +281,22 @@ def days_with_entries(path: Path | None = None) -> list[str]:
     return sorted(entries(path), reverse=True)
 
 
+def append_to_day(day: str, text: str, path: Path | None = None) -> str:
+    """把一段文字**追加**到某天的日记末尾，返回追加后的完整正文。
+
+    同一天快速记好几次，就多出几段（用空行隔开）。**不会覆盖**那天已有的内容 ——
+    所以 Ctrl+M 随手记一句，不会把你在日记页写过的整篇日记抹掉。
+    追加的内容为空时什么都不做。
+    """
+    added = (text or "").strip()
+    existing = read_day(day, path).strip("\n")
+    if not added:
+        return existing
+    merged = f"{existing}\n\n{added}" if existing.strip() else added
+    write_day(day, merged, path)
+    return merged
+
+
 def write_day(day: str, body: str, path: Path | None = None) -> None:
     """写入或更新某一天的日记；body 为空时删除这一天。"""
     target = Path(path) if path is not None else paths.DIARY_PATH

@@ -30,6 +30,7 @@ from .pages.overview import OverviewPage
 from .pages.processes import ProcessesPage
 from .services import SLOGAN_MAX_LENGTH, LifeManagerService, ValidationError
 from .widgets.common import QuickRecordDialog, warn
+from .widgets.diary_capture import DiaryCaptureDialog
 from .widgets.quick_capture import QuickCaptureDialog
 from .widgets.sidebar import ALL_NAV_ITEMS, Sidebar
 from .models import today_str
@@ -223,6 +224,9 @@ class MainWindow(QMainWindow):
         # Ctrl+N：极简快速记录（任意页面都能用），只做这一件事
         self.quick_capture_shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
         self.quick_capture_shortcut.activated.connect(self.quick_capture)
+        # Ctrl+M：极简日记（一句话追加到今天）
+        self.diary_capture_shortcut = QShortcut(QKeySequence("Ctrl+M"), self)
+        self.diary_capture_shortcut.activated.connect(self.diary_capture)
 
     # ------------------------------------------------------------ 页面连接
     def _wire_pages(self) -> None:
@@ -304,6 +308,16 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 f"已记录一次活动：{self.service.path_text(dialog.recorded.node_id)}", 5000
             )
+
+    def diary_capture(self) -> None:
+        """Ctrl+M：一个输入框，回车就把这句话追加到今天的日记里。"""
+        dialog = DiaryCaptureDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.saved_text:
+            diary_page = self.pages.get("diary")
+            refresh = getattr(diary_page, "refresh", None)
+            if callable(refresh):
+                refresh()
+            self.statusBar().showMessage("已记到今天的日记里", 4000)
 
     # ---------------------------------------------------------------- 标语
     def switch_theme(self, name: str) -> None:

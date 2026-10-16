@@ -402,4 +402,14 @@ def stylesheet() -> str:
     #QuickCaptureList {{ background: {BG}; border: none; border-radius: 0; }}
     #QuickCaptureList::item {{ padding: 6px 14px; }}
     #QuickCaptureHint {{ color: {TEXT_SUBTLE}; font-size: 11px; padding: 6px 14px; }}
+
+    /* --------------------------------------------- 日记快速记录（Ctrl+M） */
+    #DiaryCapture {{ background: {BG}; border: 1px solid {BORDER}; }}
+    #DiaryCaptureInput {{
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        padding: 12px 14px;
+        font-size: 15px;
+    }}
     """
