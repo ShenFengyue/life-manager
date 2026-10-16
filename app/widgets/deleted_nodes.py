@@ -19,10 +19,18 @@ from PySide6.QtWidgets import (
 )
 
 from ..services import LifeManagerService, ValidationError
-from .common import Muted, SectionHeader, Subtle, info, open_activity_dialog, warn
+from .common import (
+    AppDialog,
+    Muted,
+    SectionHeader,
+    Subtle,
+    info,
+    open_activity_dialog,
+    warn,
+)
 
 
-class DeletedNodesDialog(QDialog):
+class DeletedNodesDialog(AppDialog):
     """列出「已删除」清单，支持查看活动与恢复。"""
 
     changed = Signal()

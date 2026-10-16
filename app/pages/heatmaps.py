@@ -28,6 +28,7 @@ from .. import clock, heatmap as heatmap_stats, theme
 from ..models import Node, NodeType
 from ..services import LifeManagerService, ValidationError
 from ..widgets.common import (
+    AppDialog,
     ActivityListView,
     Muted,
     SectionHeader,
@@ -286,7 +287,7 @@ class HeatmapRow(QFrame):
         super().contextMenuEvent(event)
 
 
-class HeatmapDetailDialog(QDialog):
+class HeatmapDetailDialog(AppDialog):
     """某个节点的全屏大热力图：点任意一天的色块，**在下方就地**显示当天的活动记录。"""
 
     def __init__(

@@ -15,10 +15,10 @@ from PySide6.QtWidgets import (
 from .. import theme
 from ..models import Activity
 from ..services import LifeManagerService, ValidationError
-from .common import Muted, SectionHeader, Subtle, str_to_qdate, qdate_to_str
+from .common import AppDialog, Muted, SectionHeader, Subtle, str_to_qdate, qdate_to_str
 
 
-class ActivityEditDialog(QDialog):
+class ActivityEditDialog(AppDialog):
     def __init__(
         self,
         service: LifeManagerService,

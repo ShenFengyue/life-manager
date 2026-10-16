@@ -8,6 +8,7 @@ from datetime import date
 from PySide6.QtCore import QDate, QPoint, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QCursor
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QComboBox,
     QDateEdit,
     QDialog,
@@ -52,6 +53,23 @@ class Card(QFrame):
         self.body = QVBoxLayout(self)
         self.body.setContentsMargins(14, 12, 14, 12)
         self.body.setSpacing(8)
+
+
+class AppDialog(QDialog):
+    """项目里所有自定义对话框的基类。
+
+    作用只有一个：打开时**不把键盘焦点交给按钮**。Qt 默认会给默认按钮焦点，那个按钮就被高亮、
+    被虚线框住，看起来像"光标跳到了按钮上"。这里把按钮的焦点策略清掉，焦点留给输入框或
+    对话框本身；按钮照样能点，回车也照样触发默认按钮（那是另一套机制，不受影响）。
+    """
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt 命名
+        super().showEvent(event)
+        for button in self.findChildren(QAbstractButton):
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        focused = self.focusWidget()
+        if focused is None or isinstance(focused, QAbstractButton):
+            self.setFocus()
 
 
 class SectionHeader(QLabel):
@@ -481,7 +499,7 @@ class ActivityListView(QWidget):
         self.changed.emit()
 
 
-class ActivityListDialog(QDialog):
+class ActivityListDialog(AppDialog):
     """活动记录清单弹窗：把 ActivityListView 包成一个独立窗口。"""
 
     changed = Signal()
@@ -548,7 +566,7 @@ class ActivityListDialog(QDialog):
         self.view._delete_selected()
 
 
-class QuickRecordDialog(QDialog):
+class QuickRecordDialog(AppDialog):
     """记录活动：选择 Process 或 Thread、输入可选备注即可完成。
 
     lock_node=True 时锁定到指定节点（思维导图点击卡片后使用），
@@ -645,7 +663,7 @@ class QuickRecordDialog(QDialog):
         self.error_label.setVisible(True)
 
 
-class ChooseNodeDialog(QDialog):
+class ChooseNodeDialog(AppDialog):
     """从某一类节点中选择一个（用于「移动到」）。"""
 
     def __init__(
@@ -793,7 +811,7 @@ class EventHistoryList(QWidget):
         self.changed.emit()
 
 
-class AssociationDialog(QDialog):
+class AssociationDialog(AppDialog):
     """管理一条 Thread 的关联 Process（建立与解除，均写入历史）。"""
 
     def __init__(self, service: LifeManagerService, parent: QWidget | None, thread: Node) -> None:

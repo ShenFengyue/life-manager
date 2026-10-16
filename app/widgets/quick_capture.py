@@ -27,14 +27,14 @@ from ..quick_capture import (
     recent_candidates,
 )
 from ..services import LifeManagerService, ValidationError
-from .common import Subtle
+from .common import AppDialog, Subtle
 
 MATCH_PLACEHOLDER = "输入关键字匹配进程 / 线程，回车选中"
 NOTE_PLACEHOLDER = "备注（可留空，再按一次回车保存）"
 MATCH_HINT = "上下键选择 · 回车选中 · Esc 取消"
 
 
-class QuickCaptureDialog(QDialog):
+class QuickCaptureDialog(AppDialog):
     """极简记录窗：一个输入框，先匹配再写。"""
 
     def __init__(

@@ -2261,13 +2261,14 @@ class UiSmokeTest(unittest.TestCase):
 
         from app.widgets import common as common_module
 
-        focused: list[object] = []
+        policies: list[tuple[str, object]] = []
         original = QMessageBox.exec
 
         def fake_exec(self):
             self.show()
             QApplication.processEvents()
-            focused.append(self.focusWidget())
+            for button in self.findChildren(QAbstractButton):
+                policies.append((button.text(), button.focusPolicy()))
             self.hide()
             return 0
 
@@ -2279,12 +2280,66 @@ class UiSmokeTest(unittest.TestCase):
         finally:
             QMessageBox.exec = original
 
-        self.assertEqual(len(focused), 3)
-        for widget in focused:
-            self.assertFalse(
-                isinstance(widget, QAbstractButton),
-                "按钮不该拿到焦点（打开时会一闪一闪，像是鼠标跳过去了）",
+        # 离屏环境下 focusWidget() 不可靠（窗口不会被激活），所以断言**焦点策略**：
+        # 按钮拿不到焦点，就不可能被高亮 —— 这是确定性的。
+        self.assertTrue(policies, "提示框里应该有按钮")
+        for text, policy in policies:
+            self.assertEqual(
+                policy,
+                Qt.FocusPolicy.NoFocus,
+                f"「{text}」按钮还能抢焦点（打开时会一闪一闪，像是光标跳过去了）",
             )
+
+    def test_custom_dialogs_do_not_focus_buttons(self) -> None:
+        """自定义对话框（记录窗 / 当天记录清单 / 大热力图 / 已删除清单）打开时，
+        焦点都不该落在按钮上 —— 那才是"光标跳到按钮上"的真正来源。"""
+        from PySide6.QtWidgets import QAbstractButton
+
+        from app import clock
+        from app.pages.heatmaps import HeatmapDetailDialog
+        from app.widgets.common import ActivityListDialog, QuickRecordDialog
+        from app.widgets.deleted_nodes import DeletedNodesDialog
+
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        activity = self.service.record_activity(english.id, "焦点测试", "2026-10-15")
+
+        dialogs = [
+            QuickRecordDialog(
+                self.service, self.window, preset_node_id=explore.id, lock_node=True
+            ),
+            ActivityListDialog(
+                self.service,
+                self.window,
+                title="标题",
+                subtitle="副标题",
+                loader=lambda: [activity],
+            ),
+            HeatmapDetailDialog(self.service, explore, "process", clock.today()),
+            DeletedNodesDialog(self.service, self.window),
+        ]
+        try:
+            for dialog in dialogs:
+                dialog.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+                dialog.show()
+                self.app.processEvents()
+                # 注意：离屏环境下窗口不会被真正激活，focusWidget() 拿不到可靠结果
+                # （早先这条断言就是这么"假装通过"的）。改成断言**按钮的焦点策略**：
+                # 按钮拿不到焦点，就不可能被高亮 —— 这是确定性的。
+                buttons = dialog.findChildren(QAbstractButton)
+                self.assertTrue(buttons, f"{type(dialog).__name__} 应该有按钮")
+                for button in buttons:
+                    self.assertEqual(
+                        button.focusPolicy(),
+                        Qt.FocusPolicy.NoFocus,
+                        f"{type(dialog).__name__} 里的「{button.text()}」还能抢焦点",
+                    )
+                dialog.close()
+                self.app.processEvents()
+        finally:
+            for dialog in dialogs:
+                dialog.deleteLater()
+            self.app.processEvents()
 
 
 if __name__ == "__main__":
