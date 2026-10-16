@@ -118,6 +118,34 @@ class DiaryCaptureDialogTest(unittest.TestCase):
             window.deleteLater()
             self.app.processEvents()
 
+    def test_ctrl_m_really_opens_the_panel(self) -> None:
+        """端到端：真的按一下 Ctrl+M，那个窗要弹出来（用定时器关掉，避免阻塞）。"""
+        from PySide6.QtCore import QTimer, Qt
+        from PySide6.QtTest import QTest
+
+        window = MainWindow(self.service, self.config)
+        opened: list[object] = []
+
+        def close_active() -> None:
+            active = QApplication.activeModalWidget()
+            opened.append(active)
+            if active is not None:
+                active.reject()
+
+        try:
+            window.show()
+            self.app.processEvents()
+            QTimer.singleShot(150, close_active)
+            QTest.keyClick(
+                window, Qt.Key.Key_M, Qt.KeyboardModifier.ControlModifier
+            )
+            self.assertTrue(opened, "按下 Ctrl+M 应该有窗口弹出来")
+            self.assertIsInstance(opened[0], DiaryCaptureDialog)
+        finally:
+            window.close()
+            window.deleteLater()
+            self.app.processEvents()
+
 
 if __name__ == "__main__":
     unittest.main()
