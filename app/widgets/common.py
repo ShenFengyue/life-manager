@@ -9,6 +9,7 @@ from PySide6.QtCore import QDate, QPoint, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QCursor
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QApplication,
     QComboBox,
     QDateEdit,
     QDialog,
@@ -70,6 +71,28 @@ class AppDialog(QDialog):
         focused = self.focusWidget()
         if focused is None or isinstance(focused, QAbstractButton):
             self.setFocus()
+        # 诊断：定位"开弹窗时光标像是跳到了按钮上"。
+        # 记下鼠标位置、鼠标底下到底是哪个控件、以及窗口落在哪 —— 一次就能看出
+        # 是"指针被移走了"还是"窗口正好开在鼠标底下"。
+        position = QCursor.pos()
+        under = QApplication.widgetAt(position)
+        if isinstance(under, QAbstractButton):
+            under_text = f"{type(under).__name__}「{under.text()}」"
+        elif under is not None:
+            under_text = type(under).__name__
+        else:
+            under_text = "自己窗口之外"
+        logger.info(
+            "对话框显示：%s | 鼠标 (%d,%d) | 鼠标下：%s | 窗口 (%d,%d,%d,%d)",
+            type(self).__name__,
+            position.x(),
+            position.y(),
+            under_text,
+            self.x(),
+            self.y(),
+            self.width(),
+            self.height(),
+        )
 
 
 class SectionHeader(QLabel):
