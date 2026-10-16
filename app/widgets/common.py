@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from PySide6.QtCore import QDate, QPoint, QTimer, Qt, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -30,6 +31,8 @@ from PySide6.QtWidgets import (
 from .. import clock, theme
 from ..models import Node, NodeType, Status, today_str
 from ..services import LifeManagerService, ValidationError, describe_event
+
+logger = logging.getLogger(__name__)
 
 
 def qdate_to_str(value: QDate) -> str:
@@ -984,13 +987,44 @@ def run_delete_node(service: LifeManagerService, parent: QWidget, node: Node) ->
     return True
 
 
+class _MessageBox(QMessageBox):
+    """我们的提示框：**不让按钮抢焦点**。
+
+    默认的 QMessageBox 一打开就把键盘焦点交给默认按钮，视觉上那个按钮会被高亮/虚线框住，
+    看起来像"鼠标或光标跳到了按钮上"。这里在显示时把按钮的焦点策略清掉、把焦点留在框本身；
+    回车仍然会触发默认按钮，所以"按回车关掉"照旧好用。
+    """
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt 命名
+        super().showEvent(event)
+        for button in self.buttons():
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setFocus()
+
+    def exec(self) -> int:
+        # 诊断：万一还有"鼠标自己乱跳"的情况，这里会留下一行日志（正常时不会写任何东西）。
+        before = QCursor.pos()
+        code = super().exec()
+        after = QCursor.pos()
+        if before != after:
+            logger.warning(
+                "弹窗期间鼠标位置从 (%d,%d) 变到 (%d,%d)：%s",
+                before.x(),
+                before.y(),
+                after.x(),
+                after.y(),
+                self.windowTitle(),
+            )
+        return code
+
+
 def confirm(parent: QWidget, title: str, text: str, *, danger: bool = False) -> bool:
     """确认框。
 
     `danger=True`（删除这类不可撤销的操作）时，**默认按钮是「取消」** ——
     打开窗口时焦点不会落在「确定」上，免得顺手一个回车就把东西删了。
     """
-    box = QMessageBox(parent)
+    box = _MessageBox(parent)
     box.setWindowTitle(title)
     box.setText(text)
     box.setIcon(QMessageBox.Icon.Warning if danger else QMessageBox.Icon.Question)
@@ -1003,20 +1037,22 @@ def confirm(parent: QWidget, title: str, text: str, *, danger: bool = False) -> 
 
 
 def info(parent: QWidget, title: str, text: str) -> None:
-    box = QMessageBox(parent)
+    box = _MessageBox(parent)
     box.setWindowTitle(title)
     box.setText(text)
     box.setIcon(QMessageBox.Icon.Information)
-    box.addButton("好", QMessageBox.ButtonRole.AcceptRole)
+    button = box.addButton("好", QMessageBox.ButtonRole.AcceptRole)
+    box.setDefaultButton(button)
     box.exec()
 
 
 def warn(parent: QWidget, title: str, text: str) -> None:
-    box = QMessageBox(parent)
+    box = _MessageBox(parent)
     box.setWindowTitle(title)
     box.setText(text)
     box.setIcon(QMessageBox.Icon.Warning)
-    box.addButton("好", QMessageBox.ButtonRole.AcceptRole)
+    button = box.addButton("好", QMessageBox.ButtonRole.AcceptRole)
+    box.setDefaultButton(button)
     box.exec()
 
 

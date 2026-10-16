@@ -2255,6 +2255,37 @@ class UiSmokeTest(unittest.TestCase):
         self.assertEqual(seen[0], ("取消", "取消"), "危险操作应该默认到「取消」")
         self.assertEqual(seen[1], ("确定", "取消"), "普通确认框仍然是「确定」")
 
+    def test_message_boxes_do_not_give_focus_to_buttons(self) -> None:
+        """提示框 / 确认框打开时不能把焦点交给按钮 —— 那就是用户看到的"按钮被高亮"。"""
+        from PySide6.QtWidgets import QAbstractButton, QApplication, QMessageBox
+
+        from app.widgets import common as common_module
+
+        focused: list[object] = []
+        original = QMessageBox.exec
+
+        def fake_exec(self):
+            self.show()
+            QApplication.processEvents()
+            focused.append(self.focusWidget())
+            self.hide()
+            return 0
+
+        QMessageBox.exec = fake_exec
+        try:
+            common_module.info(self.window, "标题", "内容")
+            common_module.warn(self.window, "标题", "内容")
+            common_module.confirm(self.window, "标题", "内容", danger=True)
+        finally:
+            QMessageBox.exec = original
+
+        self.assertEqual(len(focused), 3)
+        for widget in focused:
+            self.assertFalse(
+                isinstance(widget, QAbstractButton),
+                "按钮不该拿到焦点（打开时会一闪一闪，像是鼠标跳过去了）",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
