@@ -2341,6 +2341,39 @@ class UiSmokeTest(unittest.TestCase):
                 dialog.deleteLater()
             self.app.processEvents()
 
+    def test_dialog_position_avoids_the_pointer(self) -> None:
+        """窗口盖住鼠标时要自动挪开。
+
+        日志里抓到过现场：弹窗固定在 (744,408,460,206)，而点完卡片的鼠标在 (1045,584) ——
+        正好在窗口里，看上去就像"光标自己跳到了按钮上"。
+        """
+        from PySide6.QtCore import QPoint, QRect
+
+        from app.widgets.common import shifted_away_from_pointer
+
+        available = QRect(0, 0, 1920, 1080)
+        frame = QRect(744, 408, 460, 206)
+
+        # 鼠标不在窗口里 → 不用挪
+        self.assertIsNone(shifted_away_from_pointer(frame, QPoint(100, 100), available))
+
+        # 鼠标在窗口里（就是日志里那次）→ 必须挪，而且挪完不再盖住鼠标
+        pointer = QPoint(1045, 584)
+        moved = shifted_away_from_pointer(frame, pointer, available)
+        self.assertIsNotNone(moved, "盖住鼠标时应该挪开")
+        self.assertFalse(
+            QRect(moved, frame.size()).contains(pointer), "挪完不能还盖着鼠标"
+        )
+
+        # 鼠标贴近屏幕底部、下方放不下 → 改往上挪
+        low_frame = QRect(744, 760, 460, 206)
+        low_pointer = QPoint(900, 900)
+        moved_up = shifted_away_from_pointer(
+            low_frame, low_pointer, QRect(0, 0, 1920, 940)
+        )
+        self.assertIsNotNone(moved_up)
+        self.assertFalse(QRect(moved_up, low_frame.size()).contains(low_pointer))
+
 
 if __name__ == "__main__":
     unittest.main()

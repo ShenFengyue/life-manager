@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from PySide6.QtCore import QDate, QPoint, QTimer, Qt, Signal
+from PySide6.QtCore import QDate, QPoint, QRect, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QCursor
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -93,6 +93,42 @@ class AppDialog(QDialog):
             self.width(),
             self.height(),
         )
+        avoid_pointer_overlap(self)
+
+
+def shifted_away_from_pointer(
+    frame: QRect, pointer: QPoint, available: QRect, gap: int = 24
+) -> QPoint | None:
+    """窗口盖住鼠标时，算出一个不盖住它的新位置；不需要挪就返回 None。
+
+    优先放到鼠标下方，下方放不下就放到上方，两边都放不下就顶到可用区域顶部。
+    """
+    if not frame.contains(pointer):
+        return None
+    for candidate_y in (pointer.y() + gap, pointer.y() - frame.height() - gap):
+        moved = QRect(frame.x(), candidate_y, frame.width(), frame.height())
+        if available.contains(moved):
+            return moved.topLeft()
+    return QPoint(frame.x(), available.top() + 12)
+
+
+def avoid_pointer_overlap(widget: QWidget, gap: int = 24) -> None:
+    """别让窗口开在鼠标底下。
+
+    弹窗默认居中于父窗口，于是常常正好盖住指针 —— 点完卡片弹窗立刻压上来，
+    看上去就像"光标自己跳到了按钮上"。这里在显示时把它挪开一点。
+    最大化/全屏的窗口不处理（那种情况下盖住鼠标是预期行为）。
+    """
+    if widget.isMaximized() or widget.isFullScreen():
+        return
+    screen = widget.screen() or QApplication.primaryScreen()
+    if screen is None:
+        return
+    target = shifted_away_from_pointer(
+        widget.frameGeometry(), QCursor.pos(), screen.availableGeometry(), gap
+    )
+    if target is not None:
+        widget.move(target)
 
 
 class SectionHeader(QLabel):
@@ -1041,6 +1077,7 @@ class _MessageBox(QMessageBox):
         for button in self.buttons():
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setFocus()
+        avoid_pointer_overlap(self)
 
     def exec(self) -> int:
         # 诊断：万一还有"鼠标自己乱跳"的情况，这里会留下一行日志（正常时不会写任何东西）。
