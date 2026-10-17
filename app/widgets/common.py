@@ -387,7 +387,7 @@ class ActivityTable(QTableWidget):
                 item.setData(NEW_DAY_ROLE, bool(new_day and row > 0))
                 self.setItem(row, column, item)
             # 靠"空隙"把天与天分开：每天的第一行加高一点，同一天里保持紧凑
-            self.setRowHeight(row, 48 if (new_day and row > 0) else 30)
+            self.setRowHeight(row, 50 if (new_day and row > 0) else 25)
         self._fit_columns(compact)
 
     def _fit_columns(self, compact: bool) -> None:
