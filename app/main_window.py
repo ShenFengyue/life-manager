@@ -205,11 +205,6 @@ class MainWindow(QMainWindow):
         row.addWidget(self.title_label)
         row.addStretch(1)
 
-        self.hint_label = QLabel("")
-        self.hint_label.setObjectName("Subtle")
-        self.hint_label.setText("本地单机 · 不联网 · 关闭窗口即退出")
-        row.addWidget(self.hint_label)
-
         quick = QPushButton("记录活动")
         quick.setObjectName("Primary")
         quick.setToolTip("打开完整记录窗口（可以改日期）· Ctrl+N 是极简快速记录")

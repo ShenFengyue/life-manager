@@ -738,7 +738,8 @@ class UiSmokeTest(unittest.TestCase):
         self.assertIsNotNone(self.service.node_by_name("进程 3-2", NodeType.PROCESS))
         self.assertEqual(len(self.service.list_activities(node_id=english.id)), 1)
 
-    def test_heatmaps_page_lists_deleted_scopes_with_data(self) -> None:
+    def test_deleted_scopes_are_hidden_but_their_data_stays(self) -> None:
+        """删掉的节点不再在热力图页出现，但它的活动数据仍然保留。"""
         page = self.window.pages["heatmaps"]
         travel = self.service.node_by_name("进程 3-2", NodeType.PROCESS)
         self.service.record_activity(travel.id, "删除前的进程 3-2", "2026-10-14")
@@ -746,11 +747,13 @@ class UiSmokeTest(unittest.TestCase):
         self.window.set_page("heatmaps")
         self.app.processEvents()
 
-        self.assertIn(travel.id, page._deleted_rows)
+        # 界面上彻底不出现（连"已删除"那一块也没有了）
+        self.assertNotIn(travel.id, page._rows)
         self.assertNotIn(travel.id, page._process_rows)
-        row = page._deleted_rows[travel.id]
-        # 数据保留：删掉的进程热力图里那次活动仍然在
-        self.assertEqual(row.calendar.totals()[0], 1)
+        self.assertEqual(page._deleted_rows, {})
+        # 数据还在：活动仍然记在这个进程名下，恢复节点后热力图会重新出现
+        self.assertEqual(len(self.service.list_activities(node_id=travel.id)), 1)
+        # 领域汇总里仍然含这笔（按当时的归属快照），所以那条标注保留
         area_row = page._area_rows[
             self.service.node_by_name("领域 3", NodeType.AREA).id
         ]

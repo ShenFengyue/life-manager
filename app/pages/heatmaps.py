@@ -700,8 +700,6 @@ class HeatmapsPage(QWidget):
                 self._thread_rows[process.id] = thread_rows
             self._rows_by_area[area.id] = rows
 
-        self._append_deleted_rows()
-
         note = Muted(
             "线程热力图统计的是「当时就记在这个线程上」的活动；记在进程上的活动只进进程与领域的热力图。"
             "线程默认收起，点进程左边的三角才展开（「全部展开」不会动它）。点任意一行可以打开全屏大图。"
@@ -711,7 +709,7 @@ class HeatmapsPage(QWidget):
         self.container_layout.addStretch(1)
         self._apply_collapsed()
 
-    def _append_deleted_rows(self) -> None:
+    def _append_deleted_rows_legacy(self) -> None:
         """已删除的领域与进程：数据保留，热力图仍然可见，并标注原来属于哪里。"""
         deleted_areas = self.service.deleted_children(None, NodeType.AREA)
         deleted_processes = [
