@@ -342,37 +342,8 @@ class NodeComboBox(QComboBox):
         return self.currentData()
 
 
-# 表格单元格上的自定义标记：这一行是不是"某一天的第一行"（要在上方画分割线）
+# 表格单元格上的自定义标记：这一行是不是"某一天的第一行"（那天第一行的行高会更大）
 NEW_DAY_ROLE = Qt.ItemDataRole.UserRole + 1
-
-
-class DayDividerDelegate(QStyledItemDelegate):
-    """每天的第一行上方画一条浅灰分割线 —— 一眼就能看出哪些活动属于同一天。
-
-    线由每一列各画自己那一段拼成（Qt 会把绘制裁剪在单元格内），
-    最左、最右各留一点内缩，看起来是分组边界而不是表格框线。
-    """
-
-    LEFT_INSET = 8
-    RIGHT_INSET = 12
-
-    def paint(self, painter, option, index) -> None:  # pragma: no cover - 需要 GUI
-        super().paint(painter, option, index)
-        if not index.data(NEW_DAY_ROLE):
-            return
-        model = index.model()
-        last_column = model.columnCount() - 1 if model is not None else index.column()
-        rect = option.rect
-        left = rect.left() + (self.LEFT_INSET if index.column() == 0 else 0)
-        right = rect.right() + (
-            1 if index.column() != last_column else -self.RIGHT_INSET
-        )
-        if right <= left:
-            return
-        painter.save()
-        painter.setPen(QPen(QColor(theme.BORDER_MUTED)))
-        painter.drawLine(int(left), rect.top(), int(right), rect.top())
-        painter.restore()
 
 
 class ActivityTable(QTableWidget):
@@ -390,7 +361,6 @@ class ActivityTable(QTableWidget):
         self.setShowGrid(False)
         self.setWordWrap(False)
         self.setAlternatingRowColors(False)
-        self.setItemDelegate(DayDividerDelegate(self))
 
     def load(self, activities, *, compact: bool = False) -> None:
         from ..models import NodeType
@@ -416,6 +386,8 @@ class ActivityTable(QTableWidget):
                 # 第一行不画线（它上面就是表头）；之后每天的第一行才画
                 item.setData(NEW_DAY_ROLE, bool(new_day and row > 0))
                 self.setItem(row, column, item)
+            # 靠"空隙"把天与天分开：每天的第一行加高一点，同一天里保持紧凑
+            self.setRowHeight(row, 48 if (new_day and row > 0) else 30)
         self._fit_columns(compact)
 
     def _fit_columns(self, compact: bool) -> None:

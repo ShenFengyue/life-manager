@@ -2409,6 +2409,10 @@ class UiSmokeTest(unittest.TestCase):
         # 倒序排列：第一行是 10-14（上面是表头，不画线）；第二行是 10-13 的第一条 → 画线；
         # 第三条仍是 10-13 → 不画
         self.assertEqual(flags, [False, True, False])
+        # 用"间距"分开：每天第一行更高，同一天里保持紧凑
+        heights = [page.table.rowHeight(row) for row in range(page.table.rowCount())]
+        self.assertGreater(heights[1], heights[0])
+        self.assertGreater(heights[1], heights[2])
 
 
 if __name__ == "__main__":
