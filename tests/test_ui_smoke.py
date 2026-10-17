@@ -2381,6 +2381,35 @@ class UiSmokeTest(unittest.TestCase):
         self.assertEqual(set(sidebar.theme_buttons), {"light", "dark"})
         self.assertTrue(sidebar.theme_buttons[theme.current_theme()].isChecked())
 
+    def test_mindmap_page_is_labelled_thought_map(self) -> None:
+        """侧栏和页面标题都叫「思维导图」（快捷键 Ctrl+3 不变）。"""
+        button = self.window.sidebar.buttons["mindmap"]
+        self.assertEqual(button.label.text(), "思维导图")
+        self.assertEqual(button.shortcut_text, "Ctrl+3")
+        self.window.set_page("mindmap")
+        self.app.processEvents()
+        self.assertEqual(self.window.title_label.text(), "思维导图")
+
+    def test_activity_rows_mark_the_first_row_of_each_day(self) -> None:
+        """活动记录：每天的第一行被标记（用来画分割线），同一天的其它行不标记。"""
+        from app.widgets.common import NEW_DAY_ROLE
+
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        self.service.record_activity(english.id, "A", "2026-10-13")
+        self.service.record_activity(english.id, "B", "2026-10-13")
+        self.service.record_activity(english.id, "C", "2026-10-14")
+
+        page = self.window.pages["activity"]
+        self.window.set_page("activity")
+        self.app.processEvents()
+        flags = [
+            bool(page.table.item(row, 0).data(NEW_DAY_ROLE))
+            for row in range(page.table.rowCount())
+        ]
+        # 倒序排列：第一行是 10-14（上面是表头，不画线）；第二行是 10-13 的第一条 → 画线；
+        # 第三条仍是 10-13 → 不画
+        self.assertEqual(flags, [False, True, False])
+
 
 if __name__ == "__main__":
     unittest.main()

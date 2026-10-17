@@ -37,7 +37,7 @@ from .models import today_str
 
 PAGE_TITLES = {
     "overview": "总览",
-    "mindmap": "记录地图",
+    "mindmap": "思维导图",
     "processes": "进程树",
     "heatmaps": "热力图",
     "activity": "活动记录",

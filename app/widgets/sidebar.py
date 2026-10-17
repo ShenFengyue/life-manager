@@ -24,7 +24,7 @@ from .. import theme
 NAV_ITEMS: tuple[tuple[str, str, str], ...] = (
     ("overview", "总览", "Ctrl+1"),
     ("heatmaps", "热力图", "Ctrl+2"),
-    ("mindmap", "记录地图", "Ctrl+3"),
+    ("mindmap", "思维导图", "Ctrl+3"),
     ("activity", "活动记录", "Ctrl+4"),
     ("processes", "进程树", "Ctrl+5"),
     ("diary", "日记", "Ctrl+6"),
