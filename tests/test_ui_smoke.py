@@ -61,7 +61,7 @@ class UiSmokeTest(unittest.TestCase):
 
         keys = [key for key, _label, _shortcut in NAV_ITEMS]
         self.assertEqual(
-            keys, ["overview", "heatmaps", "mindmap", "activity", "processes", "diary"]
+            keys, ["overview", "heatmaps", "mindmap", "processes", "activity"]
         )
         self.assertEqual(ALL_NAV_ITEMS[-1][0], "data")
         # 数据按钮在左栏里是最靠下的那个
@@ -71,6 +71,29 @@ class UiSmokeTest(unittest.TestCase):
             buttons["diary"].mapTo(self.window.sidebar, buttons["diary"].rect().center()).y(),
         )
 
+    def test_nav_spacing_has_three_tiers(self) -> None:
+        """组内最紧、两组之间一档、与总览 / 与日记最大。"""
+        sidebar = self.window.sidebar
+        self.window.resize(1400, 900)
+        self.window.show()
+        self.app.processEvents()
+
+        def gap(upper: str, lower: str) -> int:
+            top = sidebar.buttons[upper].mapTo(sidebar, QPoint(0, 0)).y()
+            bottom = (
+                sidebar.buttons[upper].mapTo(sidebar, QPoint(0, 0)).y()
+                + sidebar.buttons[upper].height()
+            )
+            return sidebar.buttons[lower].mapTo(sidebar, QPoint(0, 0)).y() - bottom
+
+        inside = gap("heatmaps", "mindmap")       # 组内
+        between = gap("mindmap", "processes")     # 两组之间
+        from_home = gap("overview", "heatmaps")   # 与总览
+        self.assertLess(inside, between)
+        self.assertLessEqual(between, from_home)
+        # 日记现在紧贴数据上方
+        self.assertLess(gap("diary", "data"), between)
+
     def test_sidebar_can_collapse_and_expand(self) -> None:
         self.window.set_page("overview")
         self.assertTrue(self.window.sidebar.isVisibleTo(self.window))
@@ -79,9 +102,12 @@ class UiSmokeTest(unittest.TestCase):
         self.window.toggle_sidebar()
         self.assertTrue(self.window.sidebar.isVisibleTo(self.window))
 
-    def test_sidebar_buttons_are_independent_and_centered(self) -> None:
-        """六个导航按钮彼此独立、留有间隙，整组垂直居中，且不再有分组框容器。"""
-        from PySide6.QtWidgets import QFrame, QLabel
+    def test_sidebar_buttons_are_independent(self) -> None:
+        """导航按钮彼此独立、留有间隙，且不再有分组框容器。
+
+        （"整组居中"是旧布局的要求，现在总览靠上、日记贴底，所以不再断言居中。）
+        """
+        from PySide6.QtWidgets import QFrame
 
         from app.widgets.sidebar import NAV_ITEMS
 
@@ -91,7 +117,7 @@ class UiSmokeTest(unittest.TestCase):
         self.app.processEvents()
 
         buttons = [sidebar.buttons[key] for key, _label, _shortcut in NAV_ITEMS]
-        self.assertEqual(len(buttons), 6)
+        self.assertEqual(len(buttons), 5)
         for above, below in zip(buttons, buttons[1:]):
             gap = (
                 below.mapTo(sidebar, QPoint(0, 0)).y()
@@ -101,19 +127,6 @@ class UiSmokeTest(unittest.TestCase):
             self.assertGreater(gap, 0, "相邻导航按钮之间应有空隙")
 
         self.assertEqual(sidebar.findChildren(QFrame, "NavGroup"), [])
-
-        subtitle = sidebar.findChild(QLabel, "SidebarSubtitle")
-        data_button = sidebar.buttons["data"]
-        top = subtitle.mapTo(sidebar, QPoint(0, 0)).y() + subtitle.height()
-        bottom = data_button.mapTo(sidebar, QPoint(0, 0)).y()
-        group_top = buttons[0].mapTo(sidebar, QPoint(0, 0)).y()
-        group_bottom = (
-            buttons[-1].mapTo(sidebar, QPoint(0, 0)).y() + buttons[-1].height()
-        )
-        group_center = (group_top + group_bottom) / 2
-        self.assertLess(
-            abs(group_center - (top + bottom) / 2), 24, "按钮组应落在左栏中间"
-        )
 
     def test_legend_appears_exactly_once_per_page(self) -> None:
         """「少 → 多」图例不重复：热力图页与总览页各只留一个。"""

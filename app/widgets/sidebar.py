@@ -25,13 +25,15 @@ NAV_ITEMS: tuple[tuple[str, str, str], ...] = (
     ("overview", "总览", "Ctrl+1"),
     ("heatmaps", "热力图", "Ctrl+2"),
     ("mindmap", "思维导图", "Ctrl+3"),
-    ("activity", "活动记录", "Ctrl+4"),
     ("processes", "进程树", "Ctrl+5"),
-    ("diary", "日记", "Ctrl+6"),
+    ("activity", "活动记录", "Ctrl+4"),
 )
 
-# 固定在左栏最下方的条目
-BOTTOM_ITEMS: tuple[tuple[str, str, str], ...] = (("data", "数据", "Ctrl+7"),)
+# 贴着左栏底部的一组：日记 + 数据
+BOTTOM_ITEMS: tuple[tuple[str, str, str], ...] = (
+    ("diary", "日记", "Ctrl+6"),
+    ("data", "数据", "Ctrl+7"),
+)
 
 ALL_NAV_ITEMS: tuple[tuple[str, str, str], ...] = NAV_ITEMS + BOTTOM_ITEMS
 
@@ -98,7 +100,12 @@ class Sidebar(QWidget):
     themeRequested = Signal(str)
 
     WIDTH = 248
+    # 间距分三档：组内最紧、两组之间一档、与总览 / 与日记最大
     BUTTON_GAP = 8
+    GROUP_GAP = 18
+    HOME_GAP = 26
+    TOP_GAP = 22
+    BOTTOM_GAP = 6
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -128,17 +135,23 @@ class Sidebar(QWidget):
         self._group.setExclusive(True)
         self.buttons: dict[str, QPushButton] = {}
 
-        # 上下各留一半弹性空白：六个按钮整组落在左栏中间
-        layout.addStretch(1)
+        # 总览紧贴在标语下方（比原来"整组居中"的位置更靠上）
+        layout.addSpacing(self.TOP_GAP)
         for index, (key, label, shortcut) in enumerate(NAV_ITEMS):
-            if index:
+            if key == "heatmaps":
+                layout.addSpacing(self.HOME_GAP)   # 与总览的距离：最大一档
+            elif key == "processes":
+                layout.addSpacing(self.GROUP_GAP)  # 两组之间：小一档
+            elif index:
                 layout.addSpacing(self.BUTTON_GAP)
             self._add_button(layout, key, label, shortcut)
-        layout.addStretch(1)
 
-        # 「数据」固定在左栏最下面，样式与上面六个一致
-        data_key, data_label, data_shortcut = BOTTOM_ITEMS[0]
-        self._add_button(layout, data_key, data_label, data_shortcut)
+        # 剩下的空白全部留在下面：日记与数据贴着底部
+        layout.addStretch(1)
+        for index, (key, label, shortcut) in enumerate(BOTTOM_ITEMS):
+            if index:
+                layout.addSpacing(self.BOTTOM_GAP)
+            self._add_button(layout, key, label, shortcut)
 
         # 最底下：配色切换（两个小段，选中的那个是当前主题）
         layout.addSpacing(10)
