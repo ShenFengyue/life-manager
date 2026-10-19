@@ -2427,6 +2427,136 @@ class UiSmokeTest(unittest.TestCase):
         self.assertGreater(heights[1], heights[0])
         self.assertGreater(heights[1], heights[2])
 
+    def test_day_row_keeps_the_same_line_spacing(self) -> None:
+        """每天第一行与当天第二条的间距，必须和普通行距完全一致。
+
+        "每天第一行"这块改过三版：居中加高、贴底加高都不行——
+        多出来的高度会被字体度量吃掉，那一行不是离上面的天更远，
+        就是和当天的第二条贴得更近。现在整格下移，空隙只留在交界处。
+        """
+        from PySide6.QtGui import QImage
+
+        def text_bands(image: QImage) -> list[tuple[int, int]]:
+            bands: list[tuple[int, int]] = []
+            start: int | None = None
+            for y in range(image.height()):
+                dark = sum(
+                    1
+                    for x in range(0, image.width(), 2)
+                    if image.pixelColor(x, y).value() < 160
+                )
+                on = dark > 3
+                if on and start is None:
+                    start = y
+                elif not on and start is not None:
+                    bands.append((start, y - 1))
+                    start = None
+            if start is not None:
+                bands.append((start, image.height() - 1))
+            return bands
+
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        for note, day in (
+            ("A", "2026-10-14"),
+            ("B", "2026-10-13"),
+            ("C", "2026-10-13"),
+            ("D", "2026-10-13"),
+        ):
+            self.service.record_activity(english.id, note, day)
+
+        page = self.window.pages["activity"]
+        self.window.set_page("activity")
+        self.app.processEvents()
+        page.table.clearSelection()
+        self.app.processEvents()
+
+        bands = text_bands(page.table.viewport().grab().toImage())
+        self.assertEqual(len(bands), 4, "没找到 4 行文字")
+        gaps = [bands[i][0] - bands[i - 1][1] for i in range(1, 4)]
+        self.assertGreaterEqual(gaps[0], gaps[2] + 6, "两天的交界处没有拉开距离")
+        self.assertLessEqual(
+            abs(gaps[1] - gaps[2]),
+            1,
+            f"每天第一行与当天第二条的间距（{gaps[1]}）和普通行距（{gaps[2]}）不一致",
+        )
+
+    def test_activity_days_stay_together_with_backdated_records(self) -> None:
+        """补记（活动日期早于记录时间）不能把同一天拆成两段。"""
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        for note, day in (
+            ("A", "2026-10-14"),
+            ("B", "2026-10-13"),
+            ("C", "2026-10-15"),
+            ("D", "2026-10-13"),
+        ):
+            self.service.record_activity(english.id, note, day)
+
+        page = self.window.pages["activity"]
+        self.window.set_page("activity")
+        self.app.processEvents()
+
+        days = [page.table.item(row, 0).text() for row in range(page.table.rowCount())]
+        self.assertEqual(days, ["2026-10-15", "2026-10-14", "2026-10-13", "2026-10-13"])
+        day_starts = sum(1 for index, day in enumerate(days) if index == 0 or days[index - 1] != day)
+        self.assertEqual(day_starts, len(set(days)), "同一天被拆成了多段")
+
+    def test_each_day_is_separated_by_a_drawn_line(self) -> None:
+        """天与天之间真的画了一条线（不是只靠行高，行高会被文字对齐方式吃掉）。"""
+        from app.widgets.common import ActivityTable, NEW_DAY_ROLE
+
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        self.service.record_activity(english.id, "A", "2026-10-13")
+        self.service.record_activity(english.id, "B", "2026-10-14")
+
+        page = self.window.pages["activity"]
+        self.window.set_page("activity")
+        self.app.processEvents()
+        table = page.table
+
+        image = table.viewport().grab().toImage()
+        day_row = 1  # 倒序：第一行是 10-14，第二行是 10-13 的第一条
+        self.assertTrue(table.item(day_row, 0).data(NEW_DAY_ROLE))
+        y = table.rowViewportPosition(day_row) + ActivityTable.DIVIDER_OFFSET
+        dark = sum(
+            1
+            for x in range(ActivityTable.DIVIDER_INSET + 4, image.width() - ActivityTable.DIVIDER_INSET - 4)
+            if image.pixelColor(x, y).value() < 250
+        )
+        span = image.width() - 2 * (ActivityTable.DIVIDER_INSET + 4)
+        self.assertGreater(dark / span, 0.9, "这一行没有画出分隔线")
+
+    def test_selected_day_row_keeps_the_gap_unselected(self) -> None:
+        """选中"每天第一行"时，它上方那段空隙不能被一起涂成选中色。"""
+        from PySide6.QtGui import QColor
+
+        from app import theme
+        from app.widgets.common import ActivityTable
+
+        english = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        for note, day in (
+            ("A", "2026-10-14"),
+            ("B", "2026-10-13"),
+            ("C", "2026-10-13"),
+        ):
+            self.service.record_activity(english.id, note, day)
+
+        page = self.window.pages["activity"]
+        self.window.set_page("activity")
+        self.app.processEvents()
+        table = page.table
+        table.selectRow(1)  # 10-13 的第一条（每天第一行）
+        self.app.processEvents()
+
+        image = table.viewport().grab().toImage()
+        top = table.rowViewportPosition(1)
+        x = image.width() - 26  # 右侧空白处，不会被文字干扰
+        gap_pixel = image.pixelColor(x, top + 3)
+        row_pixel = image.pixelColor(x, top + ActivityTable.DAY_ROW_HEIGHT - 4)
+        self.assertEqual(gap_pixel.name(), QColor(theme.BG).name(), "空隙跟着选中一起变色了")
+        self.assertNotEqual(
+            row_pixel.name(), gap_pixel.name(), "选中色没有落在文字那一行"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

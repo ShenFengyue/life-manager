@@ -6,7 +6,7 @@ import logging
 from datetime import date
 
 from PySide6.QtCore import QDate, QPoint, QRect, QTimer, Qt, Signal
-from PySide6.QtGui import QAction, QColor, QCursor, QPen
+from PySide6.QtGui import QAction, QColor, QCursor, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
@@ -344,12 +345,39 @@ class NodeComboBox(QComboBox):
 
 # 表格单元格上的自定义标记：这一行是不是"某一天的第一行"（那天第一行的行高会更大）
 NEW_DAY_ROLE = Qt.ItemDataRole.UserRole + 1
+# 每天第一行需要整体下移多少像素（多出来的行高就是与上一天之间的空隙）
+DAY_GAP_ROLE = Qt.ItemDataRole.UserRole + 2
+
+
+class _DayStartDelegate(QStyledItemDelegate):
+    """每天第一行：把整格内容下移，多出来的高度成为与上一天之间的空隙。
+
+    不能用"文字贴底"来做：Qt 贴底自带的内边距比正常行小，
+    会让这一行和当天的第二条贴得比正常行距更近。
+    整体平移才能让行距完全一致，空隙和细线都留在上方。
+    """
+
+    def paint(self, painter, option, index) -> None:  # pragma: no cover - 需要 GUI
+        extra = index.data(DAY_GAP_ROLE) or 0
+        if not extra:
+            super().paint(painter, option, index)
+            return
+        shifted = QStyleOptionViewItem(option)
+        shifted.rect = shifted.rect.adjusted(0, int(extra), 0, 0)
+        super().paint(painter, shifted, index)
 
 
 class ActivityTable(QTableWidget):
     """活动记录表格（只读）。"""
 
     HEADERS = ("日期", "归属快照", "记在哪", "备注", "记录时间")
+    # 每天的第一行略高一点，并在它上方画一条内缩的细线：
+    # 只靠"加高"分天时，文字无论居中还是贴底，读起来都会有一条记录
+    # 跟当天其它记录不在一个节奏上。空隙 + 细线才稳。
+    DAY_ROW_HEIGHT = 40
+    ROW_HEIGHT = 25
+    DIVIDER_INSET = 12
+    DIVIDER_OFFSET = 7
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(0, len(self.HEADERS), parent)
@@ -361,6 +389,7 @@ class ActivityTable(QTableWidget):
         self.setShowGrid(False)
         self.setWordWrap(False)
         self.setAlternatingRowColors(False)
+        self.setItemDelegate(_DayStartDelegate(self))
 
     def load(self, activities, *, compact: bool = False) -> None:
         from ..models import NodeType
@@ -380,15 +409,48 @@ class ActivityTable(QTableWidget):
                 activity.note or "—",
                 activity.created_at,
             )
+            day_start = bool(new_day and row > 0)
             for column, text in enumerate(cells):
                 item = QTableWidgetItem(str(text))
                 item.setData(Qt.ItemDataRole.UserRole, activity.id)
                 # 第一行不画线（它上面就是表头）；之后每天的第一行才画
-                item.setData(NEW_DAY_ROLE, bool(new_day and row > 0))
+                item.setData(NEW_DAY_ROLE, day_start)
+                # 整格下移，让这一行的文字仍落在标准行高里（行距与其它行一致）
+                item.setData(
+                    DAY_GAP_ROLE, self.DAY_ROW_HEIGHT - self.ROW_HEIGHT if day_start else 0
+                )
                 self.setItem(row, column, item)
-            # 靠"空隙"把天与天分开：每天的第一行加高一点，同一天里保持紧凑
-            self.setRowHeight(row, 50 if (new_day and row > 0) else 25)
+            # 靠"空隙 + 细线"把天与天分开：同一天里行高保持一致
+            self.setRowHeight(row, self.DAY_ROW_HEIGHT if day_start else self.ROW_HEIGHT)
         self._fit_columns(compact)
+
+    def paintEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
+        super().paintEvent(event)
+        if self.rowCount() == 0:
+            return
+        painter = QPainter(self.viewport())
+        pen = QPen(QColor(theme.BORDER))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        left = self.DIVIDER_INSET
+        right = max(left, self.viewport().width() - self.DIVIDER_INSET)
+        height = self.viewport().height()
+        gap = self.DAY_ROW_HEIGHT - self.ROW_HEIGHT
+        background = QColor(theme.BG)
+        for row in range(self.rowCount()):
+            item = self.item(row, 0)
+            if item is None or not item.data(NEW_DAY_ROLE):
+                continue
+            top = self.rowViewportPosition(row)
+            if top < -self.DAY_ROW_HEIGHT or top > height:
+                continue
+            if gap > 0:
+                # 这一行的上半截只是空隙：选中时不能跟着变蓝，
+                # 否则整条分隔线会像是被一起选中了。
+                painter.fillRect(0, top, self.viewport().width(), gap, background)
+            y = top + self.DIVIDER_OFFSET
+            painter.drawLine(left, y, right, y)
+        painter.end()
 
     def _fit_columns(self, compact: bool) -> None:
         from PySide6.QtWidgets import QHeaderView
