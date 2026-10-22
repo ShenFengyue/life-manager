@@ -205,6 +205,7 @@ class MindMapView(QGraphicsView):
     nodeActivated = Signal(str)
     nodeMenuRequested = Signal(str, QPoint)
     nodeHeatmapRequested = Signal(str)
+    zoomChanged = Signal(int)
 
     MIN_SCALE = 0.35
     MAX_SCALE = 2.2
@@ -274,6 +275,7 @@ class MindMapView(QGraphicsView):
         if scale > 0:
             self.resetTransform()
             self.scale(scale, scale)
+        self._notify_zoom()
 
     def set_parent_map(self, parents: dict[str, str | None]) -> None:
         self._parent_of = parents
@@ -323,6 +325,7 @@ class MindMapView(QGraphicsView):
             self.resetTransform()
             self.scale(1.25, 1.25)
             self.centerOn(self._content_rect.center())
+        self._notify_zoom()
 
     def zoom_by(self, factor: float) -> None:
         self._auto_fit = False
@@ -331,6 +334,14 @@ class MindMapView(QGraphicsView):
         if abs(target - current) < 1e-6:
             return
         self.scale(target / current, target / current)
+        self._notify_zoom()
+
+    def zoom_percent(self) -> int:
+        """当前缩放比例（百分数），给页面上的显示用。"""
+        return int(round(self.transform().m11() * 100))
+
+    def _notify_zoom(self) -> None:
+        self.zoomChanged.emit(self.zoom_percent())
 
     def wheelEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:

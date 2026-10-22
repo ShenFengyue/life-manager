@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction, QFontMetrics
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -56,7 +56,9 @@ class MindMapPage(QWidget):
         self.view.nodeActivated.connect(self.record_for_node)
         self.view.nodeMenuRequested.connect(self._show_node_menu)
         self.view.nodeHeatmapRequested.connect(self.open_heatmap_for_node)
+        self.view.zoomChanged.connect(self._on_zoom_changed)
         layout.addWidget(self.view, 1)
+        self._on_zoom_changed(self.view.zoom_percent())
 
         self.today_label = Subtle("")
         footer = QHBoxLayout()
@@ -85,6 +87,12 @@ class MindMapPage(QWidget):
         row.addWidget(zoom_in)
         row.addWidget(zoom_out)
 
+        self.zoom_label = Subtle("100%")
+        self.zoom_label.setMinimumWidth(46)
+        self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.zoom_label.setToolTip("当前缩放比例（Ctrl+滚轮 或 放大 / 缩小 调整）")
+        row.addWidget(self.zoom_label)
+
         self.archive_toggle = QCheckBox("显示已归档")
         self.archive_toggle.stateChanged.connect(lambda _state: self.refresh())
         row.addWidget(self.archive_toggle)
@@ -100,6 +108,9 @@ class MindMapPage(QWidget):
 
     def _fit(self) -> None:
         self.view.fit_to_window()
+
+    def _on_zoom_changed(self, percent: int) -> None:
+        self.zoom_label.setText(f"{percent}%")
 
     # ---------------------------------------------------------------- 数据
     def _build_scene(self) -> tuple[list, list[CardData], dict[str, str | None], list]:

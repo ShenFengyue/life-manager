@@ -2403,6 +2403,24 @@ class UiSmokeTest(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(self.window.title_label.text(), "思维导图")
 
+    def test_mindmap_shows_current_zoom_percentage(self) -> None:
+        """工具栏上的百分比跟着缩放实时变化，数值就是当前实际缩放。"""
+        page = self.window.pages["mindmap"]
+        self.window.set_page("mindmap")
+        self.app.processEvents()
+
+        start = page.view.zoom_percent()
+        self.assertEqual(page.zoom_label.text(), f"{start}%")
+
+        page.view.zoom_by(1.15)
+        self.app.processEvents()
+        self.assertGreater(page.view.zoom_percent(), start)
+        self.assertEqual(page.zoom_label.text(), f"{page.view.zoom_percent()}%")
+
+        page._fit()
+        self.app.processEvents()
+        self.assertEqual(page.zoom_label.text(), f"{page.view.zoom_percent()}%")
+
     def test_activity_rows_mark_the_first_row_of_each_day(self) -> None:
         """活动记录：每天的第一行被标记（用来画分割线），同一天的其它行不标记。"""
         from app.widgets.common import NEW_DAY_ROLE
