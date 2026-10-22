@@ -17,6 +17,8 @@ from . import clock
 
 DEFAULT_WEEKS = 52
 MAX_LEVEL = 4
+# 总热力图用两套 1~5 级：1–5 次绿色，6–10 次橙色
+MAX_GLOBAL_LEVEL = 10
 
 # GitHub 风格的绿色阶梯（0 无活动背景色 → 4 最深绿色）。
 LEVEL_COLORS: tuple[str, ...] = (
@@ -26,6 +28,10 @@ LEVEL_COLORS: tuple[str, ...] = (
     "#30a14e",
     "#216e39",
 )
+GREEN_SCALE: tuple[str, ...] = ("#9be9a8", "#40c463", "#30a14e", "#216e39", "#0e4429")
+ORANGE_SCALE: tuple[str, ...] = ("#ffd8a8", "#ffb86c", "#f0883e", "#d9651a", "#a33d0a")
+# 0 = 空；1–5 = 绿色五级；6–10 = 橙色五级
+LEVEL_COLORS_GLOBAL: tuple[str, ...] = (LEVEL_COLORS[0],) + GREEN_SCALE + ORANGE_SCALE
 # 注意：绘制的颜色以 app/theme.py 为准（它随深浅色切换）；
 # 这里保留同名常量只是为了兼容历史引用，不要用它去画界面。
 EMPTY_CELL_BORDER = "#d8dee4"
@@ -36,6 +42,13 @@ def level_for(count: int) -> int:
     if count <= 0:
         return 0
     return min(count, MAX_LEVEL)
+
+
+def level_for_global(count: int) -> int:
+    """总热力图专用：1–5 次对应绿色五级，6–10 次对应橙色五级。"""
+    if count <= 0:
+        return 0
+    return min(count, MAX_GLOBAL_LEVEL)
 
 
 def color_for(count: int) -> str:

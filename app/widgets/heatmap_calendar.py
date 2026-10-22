@@ -38,9 +38,12 @@ class HeatmapCalendar(QWidget):
         parent: QWidget | None = None,
         weeks: int = heatmap_stats.DEFAULT_WEEKS,
         scale: float = 1.0,
+        hot: bool = False,
     ) -> None:
         super().__init__(parent)
         self._weeks = weeks
+        # 总热力图专用：多一档橙色，用来区分"记了很多条"的日子
+        self._hot = bool(hot)
         # scale 让总热力图可以做得明显比其它热力图更大
         self._scale = max(0.6, float(scale))
         self._cell = self.CELL * self._scale
@@ -170,7 +173,11 @@ class HeatmapCalendar(QWidget):
                 if day is None:
                     continue
                 count = self._counts.get(day, 0)
-                level = heatmap_stats.level_for(count)
+                level = (
+                    heatmap_stats.level_for_global(count)
+                    if self._hot
+                    else heatmap_stats.level_for(count)
+                )
                 rect = self._cell_rect(column, row)
                 painter.setPen(Qt.PenStyle.NoPen)
                 if self._dim:
@@ -178,7 +185,12 @@ class HeatmapCalendar(QWidget):
                     painter.setBrush(QColor(theme.HEATMAP_DIM_EMPTY))
                     painter.drawRoundedRect(rect, self._radius, self._radius)
                     continue
-                painter.setBrush(QColor(theme.LEVEL_COLORS[level]))
+                palette = (
+                    (theme.LEVEL_COLORS[0],) + theme.GLOBAL_GREEN + theme.GLOBAL_ORANGE
+                    if self._hot
+                    else theme.LEVEL_COLORS
+                )
+                painter.setBrush(QColor(palette[level]))
                 painter.drawRoundedRect(rect, self._radius, self._radius)
                 if level == 0:
                     painter.setPen(empty_border)
@@ -251,17 +263,21 @@ class HeatmapLegend(QWidget):
         text_less: str = "少",
         text_more: str = "多",
         scale: float = 1.0,
+        hot: bool = False,
     ) -> None:
         super().__init__(parent)
         self._less = text_less
         self._more = text_more
+        self._hot = bool(hot)
         self._scale = max(0.6, float(scale))
         self._cell = self.CELL * self._scale
         self._gap = self.GAP * self._scale
         font = QFont()
         font.setPointSize(max(8, round(8 * self._scale)))
         self.setFont(font)
-        self.setFixedHeight(int(round(self._cell + 4)))
+        # 总热力图用两行图例：橙色（6–10）在上，绿色（1–5）在下
+        rows = 2 if self._hot else 1
+        self.setFixedHeight(int(round((self._cell + 6) * rows)))
         self.setFixedWidth(int(round(150 * self._scale)))
 
     def paintEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
@@ -270,19 +286,38 @@ class HeatmapLegend(QWidget):
         painter.setFont(self.font())
         painter.setPen(QPen(QColor(theme.TEXT_SUBTLE)))
         metrics = painter.fontMetrics()
-        y = (self.height() - self._cell) / 2
-        painter.drawText(QRect(0, 0, 22, self.height()),
-                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self._less)
-        x = 22.0
-        for color in theme.LEVEL_COLORS:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(color))
-            painter.drawRoundedRect(QRectF(x, y, self._cell, self._cell), 2, 2)
-            x += self._cell + self._gap
-        painter.setPen(QPen(QColor(theme.TEXT_SUBTLE)))
-        painter.drawText(
-            QRect(int(x) + 2, 0, metrics.horizontalAdvance(self._more) + 4, self.height()),
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            self._more,
+        rows = (
+            (("6–10", theme.GLOBAL_ORANGE), ("1–5", theme.GLOBAL_GREEN))
+            if self._hot
+            else ((self._less, theme.LEVEL_COLORS),)
         )
+        label_width = 46.0 * self._scale if self._hot else 22.0
+        row_height = self.height() / len(rows)
+        for index, (label, colors) in enumerate(rows):
+            top = index * row_height
+            y = top + (row_height - self._cell) / 2
+            painter.setPen(QPen(QColor(theme.TEXT_SUBTLE)))
+            painter.drawText(
+                QRect(0, int(top), int(label_width), int(row_height)),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                label,
+            )
+            x = label_width
+            for color in colors:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(color))
+                painter.drawRoundedRect(QRectF(x, y, self._cell, self._cell), 2, 2)
+                x += self._cell + self._gap
+            if not self._hot:
+                painter.setPen(QPen(QColor(theme.TEXT_SUBTLE)))
+                painter.drawText(
+                    QRect(
+                        int(x) + 2,
+                        int(top),
+                        metrics.horizontalAdvance(self._more) + 4,
+                        int(row_height),
+                    ),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                    self._more,
+                )
         painter.end()

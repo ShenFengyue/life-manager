@@ -1243,7 +1243,7 @@ class UiSmokeTest(unittest.TestCase):
         original = heatmaps_module.QInputDialog
         heatmaps_module.QInputDialog = FakeInputDialog
         try:
-            page._edit_process_note(explore.id)
+            page._edit_note(explore.id)
         finally:
             heatmaps_module.QInputDialog = original
 
@@ -1352,8 +1352,8 @@ class UiSmokeTest(unittest.TestCase):
         # 取消确认后事件还在
         self.assertGreater(self.service.event_count(english.id), 0)
 
-    def test_process_note_entry_is_on_row_right_click(self) -> None:
-        """右键进程那一行 → 注释入口；领域行没有（注释是进程级的东西）。"""
+    def test_note_entry_is_on_row_right_click(self) -> None:
+        """右键热力图的任意一行（领域 / 进程）都能打开注释入口。"""
         from PySide6.QtGui import QContextMenuEvent
 
         from app.pages import heatmaps as heatmaps_module
@@ -1402,7 +1402,7 @@ class UiSmokeTest(unittest.TestCase):
                 ),
             )
             self.app.processEvents()
-            self.assertEqual(area_requested, [], "领域行不该有注释入口")
+            self.assertEqual(area_requested, [1], "领域行现在也应该有注释入口")
         finally:
             heatmaps_module.QInputDialog = original
 
@@ -2556,6 +2556,85 @@ class UiSmokeTest(unittest.TestCase):
         self.assertNotEqual(
             row_pixel.name(), gap_pixel.name(), "选中色没有落在文字那一行"
         )
+
+    def test_heatmap_notes_match_the_title_and_work_on_every_level(self) -> None:
+        """注释的字号/颜色跟同一行的标题一致；领域、进程、线程都能写。"""
+        area = self.service.node_by_name("领域 3", NodeType.AREA)
+        process = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        thread = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        for node, text in (
+            (area, "领域注释"),
+            (process, "进程注释"),
+            (thread, "线程注释"),
+        ):
+            self.service.set_description(node.id, text)
+
+        page = self.window.pages["heatmaps"]
+        self.window.set_page("heatmaps")
+        self.app.processEvents()
+
+        for node, text in (
+            (area, "领域注释"),
+            (process, "进程注释"),
+            (thread, "线程注释"),
+        ):
+            row = page._rows[node.id]
+            self.assertEqual(row.note, text)
+            self.assertEqual(row._note_label.styleSheet(), row._name_label.styleSheet())
+            self.assertTrue(row._note_label.isVisibleTo(row))
+
+    def test_paused_nodes_are_hidden_from_heatmaps(self) -> None:
+        """进程树里设成「已暂停」的进程 / 线程，不在热力图页出现。"""
+        process = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
+        thread = self.service.node_by_name("线程 3-3-2", NodeType.THREAD)
+        page = self.window.pages["heatmaps"]
+        self.window.set_page("heatmaps")
+        self.app.processEvents()
+        self.assertIn(process.id, page._rows)
+        self.assertIn(thread.id, page._rows)
+
+        self.service.set_status(process.id, Status.PAUSED)
+        self.service.set_status(thread.id, Status.PAUSED)
+        page.refresh()
+        self.app.processEvents()
+        self.assertNotIn(process.id, page._rows)
+        self.assertNotIn(thread.id, page._rows)
+
+        self.service.set_status(process.id, Status.DOING)
+        self.service.set_status(thread.id, Status.DOING)
+        page.refresh()
+        self.app.processEvents()
+        self.assertIn(process.id, page._rows)
+        self.assertIn(thread.id, page._rows)
+
+    def test_global_heatmap_has_two_five_level_scales(self) -> None:
+        """总热力图有两套 1–5 级：1–5 绿色，6–10 橙色；其它热力图不受影响。"""
+        self.assertEqual(
+            [heatmap_stats.level_for_global(n) for n in (0, 1, 5, 6, 10, 15)],
+            [0, 1, 5, 6, 10, 10],
+        )
+        self.assertEqual(len(heatmap_stats.GREEN_SCALE), 5)
+        self.assertEqual(len(heatmap_stats.ORANGE_SCALE), 5)
+        self.assertEqual(len(heatmap_stats.LEVEL_COLORS_GLOBAL), 11)
+        self.assertNotIn(
+            heatmap_stats.ORANGE_SCALE[0], heatmap_stats.LEVEL_COLORS
+        )
+
+        page = self.window.pages["overview"]
+        self.window.set_page("overview")
+        self.app.processEvents()
+        self.assertTrue(page._total_card.calendar._hot)
+        if page._area_cards:
+            self.assertFalse(page._area_cards[0].calendar._hot)
+
+        from app.widgets.heatmap_calendar import HeatmapLegend
+
+        legend = page._total_card.findChild(HeatmapLegend)
+        self.assertIsNotNone(legend)
+        self.assertTrue(legend._hot)
+        single = HeatmapLegend(scale=legend._scale)
+        self.assertFalse(single._hot)
+        self.assertGreater(legend.height(), single.height(), "两行图例应该比单行更高")
 
 
 if __name__ == "__main__":

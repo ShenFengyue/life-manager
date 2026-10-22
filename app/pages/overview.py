@@ -185,7 +185,7 @@ class OverviewHeatmapCard(Card):
         if self.total:
             self.body.addSpacing(2)
 
-        self.calendar = HeatmapCalendar(scale=scale)
+        self.calendar = HeatmapCalendar(scale=scale, hot=self.total)
         self.calendar.dateClicked.connect(self._on_date_clicked)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -204,7 +204,7 @@ class OverviewHeatmapCard(Card):
         if self.total:
             legend_row = QHBoxLayout()
             legend_row.addStretch(1)
-            legend_row.addWidget(HeatmapLegend(scale=scale))
+            legend_row.addWidget(HeatmapLegend(scale=scale, hot=True))
             self.body.addLayout(legend_row)
 
     def refresh(self) -> None:

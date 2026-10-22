@@ -44,6 +44,9 @@ LIGHT: dict[str, object] = {
     "TODAY_DOT": "#30a14e",
     "PINNED": "#9a6700",
     "LEVEL_COLORS": ("#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"),
+    # 总热力图专用的两套 1~5 级：1–5 次绿色，6–10 次橙色
+    "GLOBAL_GREEN": ("#9be9a8", "#40c463", "#30a14e", "#216e39", "#0e4429"),
+    "GLOBAL_ORANGE": ("#ffd8a8", "#ffb86c", "#f0883e", "#d9651a", "#a33d0a"),
     "EMPTY_CELL_BORDER": "#d8dee4",
     "MAP_PALETTE": ("#0969da", "#8250df", "#bf8700", "#1a7f37", "#0e7490", "#cf222e"),
     "STATUS_STYLE": {
@@ -84,6 +87,8 @@ DARK: dict[str, object] = {
     "PINNED": "#d29922",
     # 空格要"比页面底色亮一点点"：这样它是有形状的格子，而不是只剩描边的空框
     "LEVEL_COLORS": ("#1b2028", "#033a16", "#196c2e", "#2ea043", "#56d364"),
+    "GLOBAL_GREEN": ("#033a16", "#196c2e", "#2ea043", "#56d364", "#7ee787"),
+    "GLOBAL_ORANGE": ("#5a2c08", "#8a4a12", "#c26a1c", "#f0883e", "#ffb86c"),
     # 描边与空格同色：深色下不再画出一片网格轮廓
     "EMPTY_CELL_BORDER": "#1b2028",
     "MAP_PALETTE": ("#4493f8", "#a371f7", "#d29922", "#3fb950", "#39c5cf", "#f85149"),
@@ -127,6 +132,8 @@ HEATMAP_DIM_EMPTY = LIGHT["HEATMAP_DIM_EMPTY"]
 TODAY_DOT = LIGHT["TODAY_DOT"]
 PINNED = LIGHT["PINNED"]
 LEVEL_COLORS = LIGHT["LEVEL_COLORS"]
+GLOBAL_GREEN = LIGHT["GLOBAL_GREEN"]
+GLOBAL_ORANGE = LIGHT["GLOBAL_ORANGE"]
 EMPTY_CELL_BORDER = LIGHT["EMPTY_CELL_BORDER"]
 MAP_PALETTE = LIGHT["MAP_PALETTE"]
 STATUS_STYLE = LIGHT["STATUS_STYLE"]

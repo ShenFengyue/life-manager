@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import clock, heatmap as heatmap_stats, theme
-from ..models import Node, NodeType
+from ..models import Node, NodeType, Status
 from ..services import LifeManagerService, ValidationError
 from ..widgets.common import (
     AppDialog,
@@ -187,10 +187,11 @@ class HeatmapRow(QFrame):
         accent.setStyleSheet(f"background: {color}; border-radius: 2px;")
 
         self._name_label = QLabel(node.name)
-        self._name_label.setStyleSheet(
+        title_style = (
             f"font-size: {'15px' if self._is_area else '13px'};"
             f" font-weight: {700 if self._is_area else 500};"
         )
+        self._name_label.setStyleSheet(title_style)
         name_row = QHBoxLayout()
         name_row.setContentsMargins(0, 0, 0, 0)
         name_row.setSpacing(8)
@@ -217,10 +218,11 @@ class HeatmapRow(QFrame):
         self.calendar.dateClicked.connect(lambda _day: self.openRequested.emit())
         row.addWidget(self.calendar, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        # 注释（进程注释 / 领域的"含已删除进程"标注）放在迷你图右边，
+        # 注释（领域 / 进程 / 线程都能写）放在迷你图右边，
         # 那里本来就有空白：既不挤，也不会被截断；没有注释时整块不留空位。
         self._note_label = QLabel("")
-        self._note_label.setStyleSheet(f"color: {theme.TEXT_SUBTLE}; font-size: 11px;")
+        # 和左边的标题同字号、同颜色
+        self._note_label.setStyleSheet(title_style)
         self._note_label.setVisible(False)
         row.addSpacing(18)
         row.addWidget(self._note_label)
@@ -280,11 +282,8 @@ class HeatmapRow(QFrame):
         super().mouseReleaseEvent(event)
 
     def contextMenuEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
-        if not self._is_area:
-            self.noteRequested.emit()
-            event.accept()
-            return
-        super().contextMenuEvent(event)
+        self.noteRequested.emit()
+        event.accept()
 
 
 class HeatmapDetailDialog(AppDialog):
@@ -597,9 +596,11 @@ class HeatmapsPage(QWidget):
                 (
                     process.id,
                     process.name,
+                    # 状态也要进签名：设成「已暂停」后这一页要重建（暂停的不显示）
+                    process.status.value,
                     # 线程也要进签名：不然新建/改名/删掉一个线程，这一页不会重建
                     tuple(
-                        (thread.id, thread.name)
+                        (thread.id, thread.name, thread.status.value)
                         for thread in self.service.threads(process.id)
                     ),
                 )
@@ -631,6 +632,12 @@ class HeatmapsPage(QWidget):
         first = True
         for index, area in enumerate(self.service.areas()):
             color = theme.map_color(index)
+            # 已暂停的进程 / 线程不进热力图（它们在进程树里仍然保留，数据也不动）
+            processes = [
+                process
+                for process in self.service.processes(area.id)
+                if process.status is not Status.PAUSED
+            ]
             if not first:
                 self.container_layout.addSpacing(AREA_GAP)
                 self.container_layout.addWidget(_divider())
@@ -643,7 +650,7 @@ class HeatmapsPage(QWidget):
                 "area",
                 color,
                 on_changed=self._on_activities_changed,
-                has_children=bool(self.service.processes(area.id)),
+                has_children=bool(processes),
             )
             area_row.openRequested.connect(
                 lambda area_id=area.id: self._open_detail("area", area_id)
@@ -651,13 +658,20 @@ class HeatmapsPage(QWidget):
             area_row.toggleRequested.connect(
                 lambda area_id=area.id: self._toggle_area(area_id)
             )
+            area_row.noteRequested.connect(
+                lambda area_id=area.id: self._edit_note(area_id)
+            )
             self.container_layout.addWidget(area_row)
             self._rows[area.id] = area_row
             self._area_rows[area.id] = area_row
 
             rows: list[HeatmapRow] = []
-            for process in self.service.processes(area.id):
-                threads = self.service.threads(process.id)
+            for process in processes:
+                threads = [
+                    thread
+                    for thread in self.service.threads(process.id)
+                    if thread.status is not Status.PAUSED
+                ]
                 row = HeatmapRow(
                     self.service,
                     process,
@@ -673,7 +687,7 @@ class HeatmapsPage(QWidget):
                     lambda process_id=process.id: self._toggle_process(process_id)
                 )
                 row.noteRequested.connect(
-                    lambda process_id=process.id: self._edit_process_note(process_id)
+                    lambda process_id=process.id: self._edit_note(process_id)
                 )
                 self.container_layout.addWidget(row)
                 self._rows[process.id] = row
@@ -693,6 +707,9 @@ class HeatmapsPage(QWidget):
                     thread_row.openRequested.connect(
                         lambda thread_id=thread.id: self._open_detail("thread", thread_id)
                     )
+                    thread_row.noteRequested.connect(
+                        lambda thread_id=thread.id: self._edit_note(thread_id)
+                    )
                     thread_row.setVisible(False)
                     self.container_layout.addWidget(thread_row)
                     self._rows[thread.id] = thread_row
@@ -702,7 +719,8 @@ class HeatmapsPage(QWidget):
 
         note = Muted(
             "线程热力图统计的是「当时就记在这个线程上」的活动；记在进程上的活动只进进程与领域的热力图。"
-            "线程默认收起，点进程左边的三角才展开（「全部展开」不会动它）。点任意一行可以打开全屏大图。"
+            "线程默认收起，点进程左边的三角才展开（「全部展开」不会动它）。"
+            "已暂停的进程和线程不在这里显示。点任意一行可以打开全屏大图。"
         )
         self.container_layout.addSpacing(AREA_GAP)
         self.container_layout.addWidget(note)
@@ -769,7 +787,7 @@ class HeatmapsPage(QWidget):
             f"最近 {grid.weeks} 周（{grid.date_from} 至 {grid.date_to}）"
         )
         self.later_button.setEnabled(self._window_offset_weeks > 0)
-        # 进程注释：有就接在统计后面显示，没有就完全不出现在行里
+        # 注释：领域 / 进程 / 线程都能写；有就显示，没有就完全不留空位
         notes = {
             row["id"]: row["description"]
             for row in self.service.db.conn.execute(
@@ -778,11 +796,12 @@ class HeatmapsPage(QWidget):
         }
         for node_id, row in self._rows.items():
             row.apply_window(grid)
-            if node_id in self._process_rows:
-                row.set_note(notes.get(node_id, ""))
-            elif node_id in self._area_rows:
+            note = notes.get(node_id, "")
+            if node_id in self._area_rows:
                 # 领域汇总里可能含已删除进程的数据，标出来免得以为是算错了
-                row.set_note(self._deleted_children_annotation(node_id, grid))
+                extra = self._deleted_children_annotation(node_id, grid)
+                note = " · ".join(part for part in (note, extra) if part)
+            row.set_note(note)
 
     def _deleted_children_annotation(self, area_id: str, grid) -> str:
         """标注领域热力图中来自已删除进程的次数（数据保留，不是丢数据）。"""
@@ -818,19 +837,19 @@ class HeatmapsPage(QWidget):
         self.refresh()
         self.changed.emit()
 
-    def _edit_process_note(self, process_id: str) -> None:
-        """右键进程那一行：写一句注释（显示在统计后面；留空则完全不显示）。"""
-        node = self.service.require_node(process_id)
+    def _edit_note(self, node_id: str) -> None:
+        """右键热力图的任意一行：写一句注释（留空则完全不显示）。"""
+        node = self.service.require_node(node_id)
         text, ok = QInputDialog.getMultiLineText(
             self,
-            "进程注释",
+            f"{node.type.label}注释",
             f"给「{node.name}」的热力图写一句注释（留空则不显示）：",
             node.description,
         )
         if not ok:
             return
         try:
-            self.service.set_description(process_id, text)
+            self.service.set_description(node_id, text)
         except ValidationError as exc:
             warn(self, "无法保存注释", str(exc))
             return
