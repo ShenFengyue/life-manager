@@ -38,6 +38,19 @@
 - 看界面：`.venv\Scripts\python.exe tools\render_preview.py`，截图在 `.preview/`。
   改界面一定要肉眼核对截图（深色块、旧控件残留、尺寸错位都是这么发现的）。
 
+### 测试策略（省时省 token）
+
+不必每次都跑全量（226 项约 20 秒，输出也占上下文）。按改动范围选：
+
+- **只动某个页面的显示细节** → 只跑相关关键字：
+  `.venv\Scripts\python.exe -m unittest tests.test_ui_smoke -k mindmap`
+- **只动某个领域逻辑** → 只跑对应文件：`tests/test_core.py`、`test_diary.py`、`test_mindmap.py`、`test_quick_capture.py` 等
+- **动到 `storage.py` / `services.py` / `clock.py` / `theme.py` / 公共控件** → 跑全量
+- **只改文档、截图、注释** → 不跑测试（必要时只跑 `tests.test_repo_hygiene`）
+- **打标签 / 准备发布前** → 跑一次全量
+
+跑测试时只回显最后几行；失败了再单独看失败片段。
+
 ## 与用户协作
 
 - 用中文交流；界面类改动先出方案或预览图，再动手。

@@ -340,6 +340,16 @@ class MindMapView(QGraphicsView):
         """当前缩放比例（百分数），给页面上的显示用。"""
         return int(round(self.transform().m11() * 100))
 
+    def set_zoom(self, factor: float, *, center: bool = True) -> None:
+        """直接跳到某个缩放比例（用于打开页面时的默认缩放）。"""
+        target = max(self.MIN_SCALE, min(self.MAX_SCALE, float(factor)))
+        self._auto_fit = False
+        self.resetTransform()
+        self.scale(target, target)
+        if center and not self._content_rect.isNull():
+            self.centerOn(self._content_rect.center())
+        self._notify_zoom()
+
     def _notify_zoom(self) -> None:
         self.zoomChanged.emit(self.zoom_percent())
 

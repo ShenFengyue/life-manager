@@ -2016,6 +2016,10 @@ class UiSmokeTest(unittest.TestCase):
         self.app.processEvents()
         explore = self.service.node_by_name("进程 3-3", NodeType.PROCESS)
         view = page.view
+        # 这条测的是中键链路，不测缩放：先缩到全览，保证目标卡片落在视口内
+        # （默认 150% 时它可能在屏幕外）。
+        view.fit_to_window()
+        self.app.processEvents()
         card = view._cards[explore.id]
         inside = view.mapFromScene(card.scenePos()) + QPoint(24, 22)
         self.assertTrue(view.viewport().rect().contains(inside), "卡片应该落在视口内")
@@ -2420,6 +2424,12 @@ class UiSmokeTest(unittest.TestCase):
         page._fit()
         self.app.processEvents()
         self.assertEqual(page.zoom_label.text(), f"{page.view.zoom_percent()}%")
+
+    def test_mindmap_opens_at_150_percent(self) -> None:
+        """重启应用后思维导图默认按 150% 打开（不记住上次的缩放）。"""
+        page = self.window.pages["mindmap"]
+        self.assertEqual(page.view.zoom_percent(), 150)
+        self.assertEqual(page.zoom_label.text(), "150%")
 
     def test_activity_rows_mark_the_first_row_of_each_day(self) -> None:
         """活动记录：每天的第一行被标记（用来画分割线），同一天的其它行不标记。"""

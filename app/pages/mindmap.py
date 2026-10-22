@@ -40,6 +40,8 @@ from .heatmaps import HeatmapDetailDialog
 class MindMapPage(QWidget):
     changed = Signal()
     openNodeRequested = Signal(str)
+    # 打开应用时思维导图的默认缩放（不记住上次的缩放，每次启动都是这个值）
+    DEFAULT_ZOOM = 1.5
 
     def __init__(self, service: LifeManagerService, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -236,7 +238,7 @@ class MindMapPage(QWidget):
         self.view.set_parent_map(parents)
         self.view.rebuild(cards, layout)
         if not self._fitted:
-            self.view.fit_to_window()
+            self.view.set_zoom(self.DEFAULT_ZOOM)
             self._fitted = True
         if today_activities:
             latest = today_activities[0]
