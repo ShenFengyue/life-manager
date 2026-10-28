@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -30,6 +31,52 @@ from ..widgets.common import Muted, Subtle
 
 CHAT_WIDTH = 860      # 中间对话栏的最大宽度（整栏居中，不贴窗口两边）
 BUBBLE_WIDTH = 620    # 单条消息气泡的最大宽度
+
+
+class MarkdownView(QTextBrowser):
+    """把一段 Markdown 渲染成自适应高度的静态视图（不滚动、不弹浏览器）。"""
+
+    def __init__(self, text: str, max_width: int, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._max_width = max_width
+        self._adjusting = False
+        self.setOpenLinks(False)
+        self.setOpenExternalLinks(False)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setStyleSheet("QTextBrowser { background: transparent; border: none; }")
+        self.document().setDocumentMargin(0)
+        self.set_markdown(text)
+
+    def set_markdown(self, text: str) -> None:
+        document = self.document()
+        document.setMarkdown(text or "")
+        document.setTextWidth(-1)
+        ideal = document.idealWidth()
+        width = int(min(self._max_width, max(80, ideal + 6)))
+        self.setFixedWidth(width)
+        self._fit_height()
+
+    def _fit_height(self) -> None:
+        """按当前真实宽度量一次高度，避免刚创建时宽度还没定、内容被裁掉。"""
+        if self._adjusting:
+            return
+        self._adjusting = True
+        try:
+            document = self.document()
+            document.setTextWidth(max(40, self.viewport().width()))
+            height = max(24, int(document.size().height()) + 2)
+            if abs(self.height() - height) > 1:
+                self.setFixedHeight(height)
+            self.verticalScrollBar().setValue(0)
+        finally:
+            self._adjusting = False
+
+    def resizeEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
+        super().resizeEvent(event)
+        if not self._adjusting:
+            self._fit_height()
 
 
 class MessageBubble(QWidget):
@@ -58,10 +105,10 @@ class MessageBubble(QWidget):
         who.setStyleSheet(f"color: {theme.TEXT_SUBTLE}; font-size: 11px; font-weight: 600;")
         inner.addWidget(who)
 
-        body = QLabel(text)
-        body.setWordWrap(True)
-        body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        body.setStyleSheet(f"color: {theme.TEXT}; font-size: 13px;")
+        body = MarkdownView(text, BUBBLE_WIDTH - 28)
+        body.setStyleSheet(
+            f"QTextBrowser {{ background: transparent; border: none; color: {theme.TEXT}; }}"
+        )
         inner.addWidget(body)
 
         if user:
@@ -353,6 +400,7 @@ class AIPage(QWidget):
             item = self.messages_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                widget.setParent(None)
                 widget.deleteLater()
 
         if not messages:

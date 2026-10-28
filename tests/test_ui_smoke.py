@@ -2773,6 +2773,20 @@ class UiSmokeTest(unittest.TestCase):
         self.assertLess(abs(column.x() - expected), 4, "对话栏没有居中")
         self.assertLessEqual(column.width(), 860, "对话栏太宽，会贴着两边")
 
+    def test_ai_messages_render_markdown(self) -> None:
+        """AI 回复按 Markdown 渲染：标题、列表、粗体、代码都不再显示原始符号。"""
+        from app.pages.ai import MarkdownView, MessageBubble
+
+        bubble = MessageBubble("assistant", "## 标题\n\n- 一\n- 二\n\n**粗体** 和 `code`")
+        view = bubble.findChild(MarkdownView)
+        self.assertIsNotNone(view)
+        text = view.document().toPlainText()
+        self.assertIn("标题", text)
+        self.assertIn("粗体", text)
+        self.assertIn("code", text)
+        for token in ("##", "**", "`"):
+            self.assertNotIn(token, text, "Markdown 符号没有被解析掉")
+
 
 if __name__ == "__main__":
     unittest.main()

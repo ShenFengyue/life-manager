@@ -1004,10 +1004,14 @@ class LifeManagerService:
                 (stamp, conversation_id),
             )
             if role == "user":
+                title = text
+                for token in ("**", "__", "`", "#", ">", "*", "_"):
+                    title = title.replace(token, "")
+                title = " ".join(title.split())
                 tx.execute(
                     "UPDATE ai_conversations SET title = ?"
                     " WHERE id = ? AND title = '新对话'",
-                    (text[:24] + ("…" if len(text) > 24 else ""), conversation_id),
+                    (title[:24] + ("…" if len(title) > 24 else ""), conversation_id),
                 )
         return message_id
 
