@@ -6,11 +6,10 @@
 
 from __future__ import annotations
 
-import html
-
-from PySide6.QtCore import Qt, QThreadPool, Signal
+from PySide6.QtCore import Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -18,8 +17,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSplitter,
-    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -28,6 +27,69 @@ from .. import ai, theme
 from ..services import LifeManagerService
 from ..widgets.ai_worker import ChatWorker
 from ..widgets.common import Muted, Subtle
+
+CHAT_WIDTH = 860      # 中间对话栏的最大宽度（整栏居中，不贴窗口两边）
+BUBBLE_WIDTH = 620    # 单条消息气泡的最大宽度
+
+
+class MessageBubble(QWidget):
+    """一条消息：你（右侧气泡）/ AI（左侧气泡），都在居中的对话栏里。"""
+
+    def __init__(self, role: str, text: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        user = role == "user"
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 3, 0, 3)
+        row.setSpacing(0)
+
+        bubble = QFrame()
+        bubble.setObjectName("UserBubble" if user else "AIBubble")
+        bubble.setMaximumWidth(BUBBLE_WIDTH)
+        bubble.setStyleSheet(
+            f"QFrame#UserBubble {{ background: {theme.ACCENT_SOFT}; border-radius: 12px; }}"
+            f"QFrame#AIBubble {{ background: {theme.SURFACE}; border-radius: 12px; }}"
+            f"QLabel {{ background: transparent; color: {theme.TEXT}; }}"
+        )
+        inner = QVBoxLayout(bubble)
+        inner.setContentsMargins(14, 10, 14, 10)
+        inner.setSpacing(4)
+
+        who = QLabel("你" if user else "AI")
+        who.setStyleSheet(f"color: {theme.TEXT_SUBTLE}; font-size: 11px; font-weight: 600;")
+        inner.addWidget(who)
+
+        body = QLabel(text)
+        body.setWordWrap(True)
+        body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        body.setStyleSheet(f"color: {theme.TEXT}; font-size: 13px;")
+        inner.addWidget(body)
+
+        if user:
+            row.addStretch(1)
+            row.addWidget(bubble)
+        else:
+            row.addWidget(bubble)
+            row.addStretch(1)
+
+
+class CenteredColumn(QWidget):
+    """把内容限制在一个最大宽度内，并始终水平居中。"""
+
+    def __init__(self, content: QWidget, max_width: int, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._content = content
+        self._max_width = max_width
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        row.addStretch(1)
+        row.addWidget(content, 0)
+        row.addStretch(1)
+
+    def resizeEvent(self, event) -> None:  # pragma: no cover - 需要 GUI
+        width = max(280, min(self._max_width, self.width() - 48))
+        self._content.setFixedWidth(width)
+        super().resizeEvent(event)
 
 
 class AIPage(QWidget):
@@ -99,14 +161,27 @@ class AIPage(QWidget):
         layout.setContentsMargins(10, 0, 0, 0)
         layout.setSpacing(8)
 
-        self.view = QTextBrowser()
-        self.view.setOpenExternalLinks(False)
-        layout.addWidget(self.view, 1)
+        # 消息区：滚动区里放一列限宽的“对话栏”，整栏水平居中（像 ChatGPT）
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.messages_column = QWidget()
+        self.messages_layout = QVBoxLayout(self.messages_column)
+        self.messages_layout.setContentsMargins(0, 12, 0, 12)
+        self.messages_layout.setSpacing(6)
+        self.scroll.setWidget(CenteredColumn(self.messages_column, CHAT_WIDTH))
+        layout.addWidget(self.scroll, 1)
+
+        # 输入区也限制在同一个宽度里，和上面的对话栏对齐
+        input_column = QWidget()
+        input_layout = QVBoxLayout(input_column)
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_layout.setSpacing(6)
 
         self.input = QPlainTextEdit()
         self.input.setFixedHeight(92)
         self.input.setPlaceholderText("输入内容，Ctrl+Enter 发送")
-        layout.addWidget(self.input)
+        input_layout.addWidget(self.input)
 
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -120,7 +195,9 @@ class AIPage(QWidget):
         self.send_button.setObjectName("PrimaryButton")
         self.send_button.clicked.connect(self.send)
         row.addWidget(self.send_button)
-        layout.addLayout(row)
+        input_layout.addLayout(row)
+
+        layout.addWidget(CenteredColumn(input_column, CHAT_WIDTH))
         return panel
 
     # ------------------------------------------------------------- 状态
@@ -272,33 +349,37 @@ class AIPage(QWidget):
     def _render_messages(
         self, messages: list[dict[str, str]], *, pending: bool = False, error: str = ""
     ) -> None:
-        parts: list[str] = [
-            "<style>"
-            f".m{{margin:10px 0;padding:10px 12px;border-radius:8px;color:{theme.TEXT};}}"
-            f".u{{background:{theme.ACCENT_SOFT};}}"
-            f".a{{background:{theme.SURFACE};}}"
-            ".r{font-weight:600;margin-bottom:4px;}"
-            f".err{{color:{theme.DANGER};}}"
-            f".muted{{color:{theme.TEXT_SUBTLE};}}"
-            "</style>"
-        ]
+        while self.messages_layout.count():
+            item = self.messages_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
         if not messages:
-            parts.append(
-                "<p class='muted'>新建一条对话，直接输入问题即可。"
-                "历史记录只保存在本机。</p>"
+            hint = QLabel("新建一条对话，直接输入问题即可。\n历史记录只保存在本机。")
+            hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            hint.setStyleSheet(
+                f"color: {theme.TEXT_SUBTLE}; font-size: 13px; padding: 70px 0;"
             )
+            self.messages_layout.addWidget(hint)
+
         for message in messages:
-            role = message["role"]
-            label = "你" if role == "user" else "AI"
-            css = "u" if role == "user" else "a"
-            body = html.escape(message["content"]).replace("\n", "<br>")
-            parts.append(
-                f"<div class='m {css}'><div class='r'>{label}</div><div>{body}</div></div>"
+            self.messages_layout.addWidget(
+                MessageBubble(message["role"], message["content"])
             )
+
         if pending:
-            parts.append("<div class='m a'><div class='r'>AI</div><div>正在回答…</div></div>")
+            self.messages_layout.addWidget(MessageBubble("assistant", "正在回答…"))
+
         if error:
-            parts.append(f"<p class='err'>发送失败：{html.escape(error)}</p>")
-        self.view.setHtml("".join(parts))
-        bar = self.view.verticalScrollBar()
+            warn = QLabel(f"发送失败：{error}")
+            warn.setWordWrap(True)
+            warn.setStyleSheet(f"color: {theme.DANGER}; padding: 6px 2px;")
+            self.messages_layout.addWidget(warn)
+
+        self.messages_layout.addStretch(1)
+        QTimer.singleShot(0, self._scroll_to_bottom)
+
+    def _scroll_to_bottom(self) -> None:
+        bar = self.scroll.verticalScrollBar()
         bar.setValue(bar.maximum())

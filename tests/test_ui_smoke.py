@@ -2758,6 +2758,21 @@ class UiSmokeTest(unittest.TestCase):
         finally:
             ai.chat = original
 
+    def test_ai_messages_sit_in_a_centered_column(self) -> None:
+        """对话栏水平居中且限宽，消息不再贴着窗口两边。"""
+        page = self.window.pages["ai"]
+        self.window.resize(1400, 900)
+        self.window.show()
+        self.window.set_page("ai")
+        for _ in range(10):
+            self.app.processEvents()
+
+        holder = page.scroll.widget()
+        column = page.messages_column
+        expected = (holder.width() - column.width()) / 2
+        self.assertLess(abs(column.x() - expected), 4, "对话栏没有居中")
+        self.assertLessEqual(column.width(), 860, "对话栏太宽，会贴着两边")
+
 
 if __name__ == "__main__":
     unittest.main()
