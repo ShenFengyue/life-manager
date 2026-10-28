@@ -130,15 +130,16 @@ class AIPage(QWidget):
 
     def _sync_ready(self) -> None:
         ready = self.ai_config.ready
-        self.input.setEnabled(ready)
-        self.send_button.setEnabled(ready and self._worker is None)
+        # 页面随时能点：没配置时也允许打字，点发送会提示先去设置。
+        self.input.setEnabled(self._worker is None)
+        self.send_button.setEnabled(self._worker is None)
         if ready:
             self.notice.setText(
                 "只发送本会话的文字与设置里的人设提示词；不会上传数据库、活动记录、日记或备份。"
             )
         else:
             self.notice.setText(
-                "AI 还没有启用或缺少 API Key：到「设置」里填好并打开开关即可。"
+                "AI 还没有启用或缺少 API Key：到「设置」里填写 Key 并勾选启用（字段可以直接编辑）。"
                 "在此之前应用完全离线，其它功能不受影响。"
             )
 
@@ -217,7 +218,7 @@ class AIPage(QWidget):
             return
         self.reload_config()
         if not self.ai_config.ready:
-            self.status.setText("还没有配置好 AI：请到「设置」里填写并启用。")
+            self.status.setText("还没有配置好 AI：点右下角「打开设置」填写 Key 并勾选启用。")
             return
 
         if self.current_id is None:
@@ -243,8 +244,8 @@ class AIPage(QWidget):
     # ------------------------------------------------------------- 回调
     def _finish(self) -> None:
         self._worker = None
-        self.input.setEnabled(self.ai_config.ready)
-        self.send_button.setEnabled(self.ai_config.ready)
+        self.input.setEnabled(True)
+        self.send_button.setEnabled(True)
         self.status.setText("")
         self.input.setFocus()
 

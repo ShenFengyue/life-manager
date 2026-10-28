@@ -64,6 +64,8 @@ class SettingsPage(QWidget):
 
         scroll.setWidget(inner)
         outer.addWidget(scroll, 1)
+        for field in (self.base_url, self.model, self.api_key):
+            field.textChanged.connect(self._sync_enabled)
         self.refresh()
 
     # ------------------------------------------------------------- 构建
@@ -187,18 +189,16 @@ class SettingsPage(QWidget):
         self.saved.emit()
 
     def _sync_enabled(self) -> None:
-        on = self.enabled_box.isChecked()
-        for widget in (
-            self.base_url,
-            self.model,
-            self.api_key,
-            self.show_key,
-            self.temperature,
-            self.system_prompt,
-            self.test_button,
-        ):
-            widget.setEnabled(on)
+        """开关只管"能不能联网"，配置字段任何时候都能编辑。
 
+        之前把整块表单跟着开关禁用，导致想填 Key 却点不动。
+        """
+        ready = bool(
+            self.base_url.text().strip()
+            and self.model.text().strip()
+            and self.api_key.text().strip()
+        )
+        self.test_button.setEnabled(ready)
     # ------------------------------------------------------------- 测试
     def _test_connection(self) -> None:
         if self._test_worker is not None:

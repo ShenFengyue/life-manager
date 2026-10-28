@@ -2678,15 +2678,20 @@ class UiSmokeTest(unittest.TestCase):
             self.assertIn(key, self.window.pages)
 
     def test_ai_page_stays_offline_until_configured(self) -> None:
-        """没有 Key / 没启用时，输入框禁用；配置好之后才可用。"""
+        """没有 Key / 没启用时页面仍然可以点；发送会提示先去设置，且不写任何数据。"""
         from app import ai
         from app.pages.ai import AIPage
 
         page = AIPage(self.service, ai_config=ai.AIConfig(self.tmp / "ai.json"))
         self.assertFalse(page.ai_config.ready)
-        self.assertFalse(page.input.isEnabled())
-        self.assertFalse(page.send_button.isEnabled())
+        self.assertTrue(page.input.isEnabled(), "没配置也要能点，不能像死掉一样")
+        self.assertTrue(page.send_button.isEnabled())
         self.assertIn("设置", page.notice.text())
+
+        page.input.setPlainText("测试一下")
+        page.send()
+        self.assertEqual(self.service.ai_conversations(), [])
+        self.assertIn("设置", page.status.text())
 
         page.ai_config.set("enabled", True)
         page.ai_config.set("api_key", "sk-test")
@@ -2718,6 +2723,10 @@ class UiSmokeTest(unittest.TestCase):
         self.assertEqual(stored.get("model"), "deepseek-chat")
         self.assertAlmostEqual(float(stored.get("temperature")), 0.3)
         self.assertTrue(stored.get("enabled"))
+        # 开关关闭时字段也要能编辑（以前整块表单被禁用，Key 根本填不进去）
+        page.enabled_box.setChecked(False)
+        self.assertTrue(page.api_key.isEnabled())
+        self.assertTrue(page.base_url.isEnabled())
 
     def test_ai_worker_reports_reply_and_error_without_network(self) -> None:
         """后台 worker 只发信号：成功回文本，失败回可读错误。"""
