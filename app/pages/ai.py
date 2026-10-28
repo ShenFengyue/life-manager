@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import ai
+from .. import ai, theme
 from ..services import LifeManagerService
 from ..widgets.ai_worker import ChatWorker
 from ..widgets.common import Muted, Subtle
@@ -273,16 +273,17 @@ class AIPage(QWidget):
     ) -> None:
         parts: list[str] = [
             "<style>"
-            ".m{margin:10px 0;padding:10px 12px;border-radius:8px;}"
-            ".u{background:#eef6ff;}"
-            ".a{background:#f6f8fa;}"
+            f".m{{margin:10px 0;padding:10px 12px;border-radius:8px;color:{theme.TEXT};}}"
+            f".u{{background:{theme.ACCENT_SOFT};}}"
+            f".a{{background:{theme.SURFACE};}}"
             ".r{font-weight:600;margin-bottom:4px;}"
-            ".err{color:#b42318;}"
+            f".err{{color:{theme.DANGER};}}"
+            f".muted{{color:{theme.TEXT_SUBTLE};}}"
             "</style>"
         ]
         if not messages:
             parts.append(
-                "<p style='color:#656d76'>新建一条对话，直接输入问题即可。"
+                "<p class='muted'>新建一条对话，直接输入问题即可。"
                 "历史记录只保存在本机。</p>"
             )
         for message in messages:

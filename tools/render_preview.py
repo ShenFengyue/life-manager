@@ -238,7 +238,10 @@ def main() -> int:
     window.resize(1560, 980)
     window.show()
     _settle(app)
-    for key in ("overview", "heatmaps", "processes", "activity", "mindmap", "diary", "data"):
+    for key in (
+        "overview", "ai", "heatmaps", "processes", "activity",
+        "mindmap", "diary", "data", "settings",
+    ):
         window.set_page(key)
         _settle(app)
         target = OUTPUT_DIR / f"dark-{key}.png"
