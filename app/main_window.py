@@ -22,12 +22,14 @@ from PySide6.QtWidgets import (
 from . import clock, paths, theme
 from .appconfig import AppConfig
 from .pages.activity import ActivityPage
+from .pages.ai import AIPage
 from .pages.data import DataPage
 from .pages.diary import DiaryPage
 from .pages.heatmaps import HeatmapsPage
 from .pages.mindmap import MindMapPage
 from .pages.overview import OverviewPage
 from .pages.processes import ProcessesPage
+from .pages.settings import SettingsPage
 from .services import SLOGAN_MAX_LENGTH, LifeManagerService, ValidationError
 from .widgets.common import QuickRecordDialog, warn
 from .widgets.diary_capture import DiaryCaptureDialog
@@ -37,12 +39,14 @@ from .models import today_str
 
 PAGE_TITLES = {
     "overview": "总览",
+    "ai": "AI",
     "mindmap": "思维导图",
     "processes": "进程树",
     "heatmaps": "热力图",
     "activity": "活动记录",
     "diary": "日记",
     "data": "数据",
+    "settings": "设置",
 }
 
 
@@ -94,12 +98,14 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.pages: dict[str, QWidget] = {
             "overview": OverviewPage(service, config=config),
+            "ai": AIPage(service),
             "mindmap": MindMapPage(service),
             "processes": ProcessesPage(service),
             "heatmaps": HeatmapsPage(service),
             "activity": ActivityPage(service),
             "diary": DiaryPage(),
             "data": DataPage(service, config=config),
+            "settings": SettingsPage(config),
         }
         for page in self.pages.values():
             self.stack.addWidget(page)
@@ -228,6 +234,8 @@ class MainWindow(QMainWindow):
         overview: OverviewPage = self.pages["overview"]
         processes: ProcessesPage = self.pages["processes"]
         activity: ActivityPage = self.pages["activity"]
+        ai_page: AIPage = self.pages["ai"]
+        settings: SettingsPage = self.pages["settings"]
 
         for page in self.pages.values():
             if hasattr(page, "changed"):
@@ -239,6 +247,8 @@ class MainWindow(QMainWindow):
             if hasattr(page, "sloganEditRequested"):
                 page.sloganEditRequested.connect(self._edit_slogan)
         activity.openNodeRequested.connect(self.open_node)
+        settings.saved.connect(ai_page.reload_config)
+        ai_page.openSettingsRequested.connect(lambda: self.set_page("settings"))
 
     def on_data_changed(self) -> None:
         """数据变化后只刷新当前页面；其余页面在切回时按数据版本自动刷新。

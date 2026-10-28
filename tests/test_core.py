@@ -379,16 +379,108 @@ class TestPersistenceAndData(ServiceTestCase):
             self.assertFalse(any(part in str(path) for part in forbidden))
 
     def test_source_has_no_network_dependencies(self) -> None:
-        """验收 15：不依赖远程 API、云端或网络库。"""
+        """只有 app/ai.py（AI 客户端）允许联网，其它模块一律不许。"""
         banned = ("requests", "httpx", "aiohttp", "urllib.request", "http.client",
                   "socket", "ftplib", "smtplib", "webbrowser", "openai", "anthropic")
         offenders: list[str] = []
         for file in (paths.ROOT / "app").rglob("*.py"):
+            # AI 功能是唯一的联网出口（见 docs/AI-功能草案.md）
+            if file == paths.ROOT / "app" / "ai.py":
+                continue
             text = file.read_text(encoding="utf-8")
             for name in banned:
                 if f"import {name}" in text:
                     offenders.append(f"{file.name}: {name}")
         self.assertEqual(offenders, [])
+
+
+class TestAIChat(ServiceTestCase):
+    """AI 对话：本地历史、请求体隐私、配置与发送日志。"""
+
+    def test_conversation_history_roundtrip(self) -> None:
+        conversation = self.service.create_ai_conversation()
+        self.service.append_ai_message(conversation, "user", "你好")
+        self.service.append_ai_message(conversation, "assistant", "在")
+
+        conversations = self.service.ai_conversations()
+        self.assertEqual(len(conversations), 1)
+        self.assertEqual(conversations[0]["title"], "你好")
+        self.assertEqual(conversations[0]["message_count"], 2)
+        self.assertEqual(
+            [m["role"] for m in self.service.ai_messages(conversation)],
+            ["user", "assistant"],
+        )
+
+        self.service.append_ai_message(conversation, "user", "再问一句")
+        self.assertGreaterEqual(
+            self.service.ai_conversations()[0]["updated_at"], conversations[0]["updated_at"]
+        )
+
+        self.service.delete_ai_conversation(conversation)
+        self.assertEqual(self.service.ai_conversations(), [])
+        self.assertEqual(self.service.ai_messages(conversation), [])
+
+    def test_request_body_contains_only_the_conversation(self) -> None:
+        from app import ai
+
+        config = ai.AIConfig(self.tmp / "ai.json")
+        config.set("system_prompt", "人设提示词")
+        config.set("model", "deepseek-chat")
+        payload = ai.build_payload(
+            config,
+            [
+                {"role": "user", "content": "这句话会发出去"},
+                {"role": "assistant", "content": "好"},
+            ],
+        )
+        self.assertEqual(payload["messages"][0], {"role": "system", "content": "人设提示词"})
+        self.assertEqual(
+            [m["content"] for m in payload["messages"][1:]], ["这句话会发出去", "好"]
+        )
+
+        text = json.dumps(payload, ensure_ascii=False)
+        for forbidden in ("process_manager.sqlite3", "activities", "backup", "diary"):
+            self.assertNotIn(forbidden, text)
+        self.assertNotIn("api_key", text)
+
+    def test_config_is_off_by_default_and_stored_under_data(self) -> None:
+        from app import ai
+
+        config = ai.AIConfig(self.tmp / "ai.json")
+        self.assertFalse(config.ready, "默认必须是关闭的")
+        config.set("api_key", "sk-test")
+        config.set("enabled", True)
+        config.save()
+
+        again = ai.AIConfig(self.tmp / "ai.json")
+        self.assertTrue(again.ready)
+        self.assertEqual(again.get("api_key"), "sk-test")
+        self.assertIn("data", str(ai.AI_CONFIG_PATH))
+
+    def test_endpoint_builder(self) -> None:
+        from app import ai
+
+        self.assertEqual(
+            ai.endpoint("https://api.deepseek.com"),
+            "https://api.deepseek.com/chat/completions",
+        )
+        self.assertEqual(ai.endpoint("https://x/v1/"), "https://x/v1/chat/completions")
+        self.assertEqual(
+            ai.endpoint("https://x/chat/completions"), "https://x/chat/completions"
+        )
+
+    def test_send_log_never_contains_the_key_or_the_text(self) -> None:
+        from app import ai
+
+        original = ai.AI_LOG_PATH
+        ai.AI_LOG_PATH = self.tmp / "logs" / "ai.log"
+        try:
+            ai._log(True, "deepseek-chat", 123, "reply=4c")
+            text = ai.AI_LOG_PATH.read_text(encoding="utf-8")
+        finally:
+            ai.AI_LOG_PATH = original
+        self.assertIn("bytes=123", text)
+        self.assertNotIn("sk-", text)
 
 
 class TestEventDeletion(ServiceTestCase):

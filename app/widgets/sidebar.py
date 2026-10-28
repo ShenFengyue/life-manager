@@ -23,16 +23,18 @@ from .. import theme
 
 NAV_ITEMS: tuple[tuple[str, str, str], ...] = (
     ("overview", "总览", "Ctrl+1"),
+    ("ai", "AI", "Ctrl+8"),
     ("heatmaps", "热力图", "Ctrl+2"),
     ("mindmap", "思维导图", "Ctrl+3"),
     ("processes", "进程树", "Ctrl+5"),
     ("activity", "活动记录", "Ctrl+4"),
 )
 
-# 贴着左栏底部的一组：日记 + 数据
+# 贴着左栏底部的一组：日记 + 数据 + 设置
 BOTTOM_ITEMS: tuple[tuple[str, str, str], ...] = (
     ("diary", "日记", "Ctrl+6"),
     ("data", "数据", "Ctrl+7"),
+    ("settings", "设置", "Ctrl+9"),
 )
 
 ALL_NAV_ITEMS: tuple[tuple[str, str, str], ...] = NAV_ITEMS + BOTTOM_ITEMS

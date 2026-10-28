@@ -937,6 +937,85 @@ class LifeManagerService:
     def delete_event(self, event_id: str) -> None:
         self.delete_events([event_id])
 
+    # ============================================================ AI 对话历史
+    def create_ai_conversation(self, title: str = "新对话") -> str:
+        """新建一个空对话，返回 id。历史只存在本地数据库里。"""
+        conversation_id = new_id()
+        stamp = now_stamp()
+        with self.db.transaction() as tx:
+            tx.execute(
+                "INSERT INTO ai_conversations(id, title, created_at, updated_at)"
+                " VALUES(?,?,?,?)",
+                (conversation_id, (title or "新对话").strip() or "新对话", stamp, stamp),
+            )
+        return conversation_id
+
+    def ai_conversations(self) -> list[dict[str, Any]]:
+        """对话列表，最近更新的在前。"""
+        rows = self.db.conn.execute(
+            "SELECT c.id, c.title, c.created_at, c.updated_at,"
+            " (SELECT count(*) FROM ai_messages m WHERE m.conversation_id = c.id) AS n"
+            " FROM ai_conversations c ORDER BY c.updated_at DESC, c.rowid DESC"
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "title": row["title"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "message_count": int(row["n"]),
+            }
+            for row in rows
+        ]
+
+    def ai_messages(self, conversation_id: str) -> list[dict[str, str]]:
+        rows = self.db.conn.execute(
+            "SELECT id, role, content, created_at FROM ai_messages"
+            " WHERE conversation_id = ? ORDER BY created_at, rowid",
+            (conversation_id,),
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "role": row["role"],
+                "content": row["content"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def append_ai_message(self, conversation_id: str, role: str, content: str) -> str:
+        """追加一条对话消息（user / assistant）。"""
+        if role not in ("user", "assistant"):
+            raise ValidationError("对话角色只能是 user 或 assistant。")
+        text = (content or "").strip()
+        if not text:
+            raise ValidationError("消息不能为空。")
+        message_id = new_id()
+        stamp = now_stamp()
+        with self.db.transaction() as tx:
+            tx.execute(
+                "INSERT INTO ai_messages(id, conversation_id, role, content, created_at)"
+                " VALUES(?,?,?,?,?)",
+                (message_id, conversation_id, role, text, stamp),
+            )
+            tx.execute(
+                "UPDATE ai_conversations SET updated_at = ? WHERE id = ?",
+                (stamp, conversation_id),
+            )
+            if role == "user":
+                tx.execute(
+                    "UPDATE ai_conversations SET title = ?"
+                    " WHERE id = ? AND title = '新对话'",
+                    (text[:24] + ("…" if len(text) > 24 else ""), conversation_id),
+                )
+        return message_id
+
+    def delete_ai_conversation(self, conversation_id: str) -> None:
+        with self.db.transaction() as tx:
+            tx.execute("DELETE FROM ai_messages WHERE conversation_id = ?", (conversation_id,))
+            tx.execute("DELETE FROM ai_conversations WHERE id = ?", (conversation_id,))
+
     # ======================================================= 备份与导入导出
     def backup(self, label: str = "manual") -> Path:
         """用 SQLite 备份 API 生成一致性快照，保存在项目内的 data/backups。"""

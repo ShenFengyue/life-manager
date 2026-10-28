@@ -61,13 +61,15 @@ class UiSmokeTest(unittest.TestCase):
 
         keys = [key for key, _label, _shortcut in NAV_ITEMS]
         self.assertEqual(
-            keys, ["overview", "heatmaps", "mindmap", "processes", "activity"]
+            keys, ["overview", "ai", "heatmaps", "mindmap", "processes", "activity"]
         )
-        self.assertEqual(ALL_NAV_ITEMS[-1][0], "data")
-        # 数据按钮在左栏里是最靠下的那个
+        self.assertEqual(ALL_NAV_ITEMS[-1][0], "settings")
+        # 设置按钮在左栏里是最靠下的那个
         buttons = self.window.sidebar.buttons
         self.assertGreater(
-            buttons["data"].mapTo(self.window.sidebar, buttons["data"].rect().center()).y(),
+            buttons["settings"]
+            .mapTo(self.window.sidebar, buttons["settings"].rect().center())
+            .y(),
             buttons["diary"].mapTo(self.window.sidebar, buttons["diary"].rect().center()).y(),
         )
 
@@ -117,7 +119,7 @@ class UiSmokeTest(unittest.TestCase):
         self.app.processEvents()
 
         buttons = [sidebar.buttons[key] for key, _label, _shortcut in NAV_ITEMS]
-        self.assertEqual(len(buttons), 5)
+        self.assertEqual(len(buttons), len(NAV_ITEMS))
         for above, below in zip(buttons, buttons[1:]):
             gap = (
                 below.mapTo(sidebar, QPoint(0, 0)).y()
@@ -438,7 +440,7 @@ class UiSmokeTest(unittest.TestCase):
         from PySide6.QtGui import QShortcut
 
         sidebar = self.window.sidebar
-        self.assertEqual(len(sidebar.buttons), 7)
+        self.assertEqual(len(sidebar.buttons), 9)
         for button in sidebar.buttons.values():
             self.assertGreaterEqual(button.minimumHeight(), 44, "按钮太小，不好点击")
             self.assertFalse(hasattr(button, "hint"), "快捷键文字应该已经移除")
@@ -447,7 +449,7 @@ class UiSmokeTest(unittest.TestCase):
         shortcuts = {
             shortcut.key().toString() for shortcut in self.window.findChildren(QShortcut)
         }
-        for key in ("Ctrl+1", "Ctrl+7"):
+        for key in ("Ctrl+1", "Ctrl+7", "Ctrl+8", "Ctrl+9"):
             self.assertIn(key, shortcuts)
 
     def test_process_tree_lists_all_areas(self) -> None:
@@ -2663,6 +2665,89 @@ class UiSmokeTest(unittest.TestCase):
         single = HeatmapLegend(scale=legend._scale)
         self.assertFalse(single._hot)
         self.assertGreater(legend.height(), single.height(), "两行图例应该比单行更高")
+
+    def test_sidebar_puts_ai_under_overview_and_settings_at_bottom(self) -> None:
+        """左栏：AI 紧跟在总览下面；设置在最底部（数据之后）。"""
+        from app.widgets.sidebar import ALL_NAV_ITEMS, BOTTOM_ITEMS, NAV_ITEMS
+
+        keys = [key for key, _label, _shortcut in NAV_ITEMS]
+        self.assertEqual(keys[:2], ["overview", "ai"])
+        self.assertEqual(BOTTOM_ITEMS[-1][0], "settings")
+        self.assertEqual(ALL_NAV_ITEMS[-1][0], "settings")
+        for key in ("ai", "settings"):
+            self.assertIn(key, self.window.pages)
+
+    def test_ai_page_stays_offline_until_configured(self) -> None:
+        """没有 Key / 没启用时，输入框禁用；配置好之后才可用。"""
+        from app import ai
+        from app.pages.ai import AIPage
+
+        page = AIPage(self.service, ai_config=ai.AIConfig(self.tmp / "ai.json"))
+        self.assertFalse(page.ai_config.ready)
+        self.assertFalse(page.input.isEnabled())
+        self.assertFalse(page.send_button.isEnabled())
+        self.assertIn("设置", page.notice.text())
+
+        page.ai_config.set("enabled", True)
+        page.ai_config.set("api_key", "sk-test")
+        page.reload_config()
+        self.assertTrue(page.input.isEnabled())
+
+    def test_settings_page_saves_ai_config_to_its_own_file(self) -> None:
+        """设置页把 Key 存进 ai.json（测试里换成临时路径），并发出 saved。"""
+        from app import ai
+        from app.pages.settings import SettingsPage
+
+        config = ai.AIConfig(self.tmp / "ai.json")
+        page = SettingsPage(self.config, ai_config=config)
+        saved: list[int] = []
+        page.saved.connect(lambda: saved.append(1))
+
+        page.enabled_box.setChecked(True)
+        page.base_url.setText("https://api.deepseek.com")
+        page.model.setText("deepseek-chat")
+        page.api_key.setText("sk-test-123")
+        page.temperature.setValue(0.3)
+        page.system_prompt.setPlainText("简洁回答")
+        page.save()
+        self.app.processEvents()
+
+        self.assertEqual(saved, [1])
+        stored = ai.AIConfig(self.tmp / "ai.json")
+        self.assertEqual(stored.get("api_key"), "sk-test-123")
+        self.assertEqual(stored.get("model"), "deepseek-chat")
+        self.assertAlmostEqual(float(stored.get("temperature")), 0.3)
+        self.assertTrue(stored.get("enabled"))
+
+    def test_ai_worker_reports_reply_and_error_without_network(self) -> None:
+        """后台 worker 只发信号：成功回文本，失败回可读错误。"""
+        from app import ai
+        from app.widgets.ai_worker import ChatWorker
+
+        config = ai.AIConfig(self.tmp / "ai.json")
+        config.set("enabled", True)
+        config.set("api_key", "sk-test")
+
+        original = ai.chat
+        try:
+            ai.chat = lambda *args, **kwargs: "测试回复"
+            replies: list[str] = []
+            worker = ChatWorker(config, [{"role": "user", "content": "hi"}])
+            worker.signals.done.connect(replies.append)
+            worker.run()
+            self.assertEqual(replies, ["测试回复"])
+
+            def boom(*args, **kwargs):
+                raise ai.AIError("网络不通：测试")
+
+            ai.chat = boom
+            errors: list[str] = []
+            worker = ChatWorker(config, [{"role": "user", "content": "hi"}])
+            worker.signals.failed.connect(errors.append)
+            worker.run()
+            self.assertEqual(errors, ["网络不通：测试"])
+        finally:
+            ai.chat = original
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ from .models import NodeType, PathStep, Status, now_stamp
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA_STATEMENTS = (
     """
@@ -88,6 +88,25 @@ SCHEMA_STATEMENTS = (
         created_at TEXT NOT NULL
     )
     """,
+    # AI 对话历史：只存对话本身，不存任何日记 / 活动 / 备份内容。
+    """
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+        id         TEXT PRIMARY KEY,
+        title      TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ai_messages (
+        id              TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        role            TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+        content         TEXT NOT NULL,
+        created_at      TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_ai_messages_conv ON ai_messages(conversation_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id, position)",
     "CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type)",
     "CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(activity_date)",
@@ -115,6 +134,26 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             created_at TEXT NOT NULL
         )
         """,
+    ),
+    5: (
+        """
+        CREATE TABLE IF NOT EXISTS ai_conversations (
+            id         TEXT PRIMARY KEY,
+            title      TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ai_messages (
+            id              TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            role            TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+            content         TEXT NOT NULL,
+            created_at      TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_ai_messages_conv ON ai_messages(conversation_id, created_at)",
     ),
 }
 

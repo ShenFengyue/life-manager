@@ -143,12 +143,14 @@ def main() -> int:
 
     shots = (
         ("overview", 1560, 980),
+        ("ai", 1560, 980),
         ("mindmap", 1560, 1180),
         ("processes", 1560, 980),
         ("heatmaps", 1560, 1180),
         ("activity", 1560, 980),
         ("diary", 1560, 980),
         ("data", 1560, 980),
+        ("settings", 1560, 980),
     )
     for key, width, height in shots:
         window.resize(width, height)
